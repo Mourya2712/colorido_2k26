@@ -1,0 +1,786 @@
+<USER_REQUEST>
+COLORIDO 2K26 — FINAL REGISTRATION, ADMIN DATA, SPORTS & MOBILE CORRECTIONS
+
+IMPORTANT:
+Do NOT redesign the existing Admin Panel from scratch.
+Do NOT remove the current good functionality.
+
+Implement the following corrections in the existing full-stack application.
+
+The database must remain the single source of truth.
+
+============================================================
+1. BOYS/GIRLS SPORTS REGISTRATION — EVENT SELECTION MUST BE CLEAR
+============================================================
+
+Current problem:
+
+When registering for Boys Sports or Girls Sports, the user cannot clearly see/select which game they are registering for.
+
+Fix this.
+
+When the participant chooses:
+
+BOYS SPORTS
+
+show the available games clearly:
+
+☐ Volleyball
+☐ Basketball
+☐ Table Tennis
+
+When the participant chooses:
+
+GIRLS SPORTS
+
+show:
+
+☐ Throwball
+☐ Tennikoit
+☐ Table Tennis
+
+Prefer a clear event-selection UI such as selectable cards/radio buttons/dropdown, but the selected event must be visually obvious.
+
+Example:
+
+BOYS SPORTS
+
+[ Volleyball ]
+[ Basketball ]
+[ Table Tennis ]
+
+Selected event should have a clearly visible active state.
+
+After selecting an event, display the corresponding event information before registration:
+
+- Event name
+- Short description
+- Rules where available
+- Registration deadline
+- Register Now / Continue
+
+The selected event must be sent to the backend and stored correctly.
+
+DO NOT allow a sports registration to be submitted without a valid event selection.
+
+============================================================
+2. REGISTRATION DATA → ADMIN DASHBOARD
+============================================================
+
+Every field entered by a participant must be stored accurately and displayed accurately in the Admin Dashboard.
+
+Registration flow:
+
+Public Website
+    ↓
+Registration Form
+    ↓
+Backend API
+    ↓
+Database
+    ↓
+Admin Dashboard
+
+The Admin Dashboard registration detail must show all submitted information.
+
+For individual registration:
+
+- Registration ID
+- Participant name
+- Email
+- Mobile number
+- College
+- Branch
+- Student/Roll number
+- Gender where applicable
+- Category
+- Event
+- Venue
+- Event date/time
+- Registration timestamp
+- Registration status
+- E-pass status/number
+
+For team registration:
+
+- Registration ID
+- Team name
+- Captain details
+- College
+- Branch
+- Team size
+- Every team member
+- Member contact/details as collected
+- Category
+- Event
+- Venue
+- Event date/time
+- Registration timestamp
+- Registration status
+- E-pass number
+
+Do NOT lose any fields between frontend → backend → database → admin.
+
+============================================================
+3. DASHBOARD STATISTICS MUST BE REAL
+============================================================
+
+The Admin Dashboard statistics must come from the database.
+
+Do NOT use unrelated hard-coded numbers.
+
+Required statistics:
+
+- Total Registrations
+- Cultural Registrations
+- Boys Sports Registrations
+- Girls Sports Registrations
+- Confirmed E-Passes
+
+Counts must be calculated from actual registration records.
+
+For the demo/testing environment, seed a small realistic number of dummy registrations.
+
+Use approximately:
+
+7–8 total registrations
+
+distributed across Cultural, Boys Sports and Girls Sports.
+
+For example, the exact distribution can be:
+
+- 3 Cultural
+- 3 Boys Sports
+- 2 Girls Sports
+
+The important requirement is that the displayed statistics match the actual seeded registration records.
+
+If one registration is deleted/cancelled/rejected, the relevant statistics must update.
+
+If a new registration is created, the statistics must update.
+
+DO NOT make the dashboard say "8 registrations" if only 3 records actually exist.
+
+============================================================
+4. CONFIRMED E-PASS COUNT
+============================================================
+
+The "Confirmed E-Passes" statistic must be based on actual registrations whose e-pass/status is confirmed.
+
+Do NOT count every registration blindly.
+
+Example:
+
+8 registrations
+6 confirmed
+2 pending
+
+Dashboard:
+
+Total Registrations: 8
+Confirmed E-Passes: 6
+
+These values must come from the database.
+
+============================================================
+5. REMOVE VENUE FROM CATEGORY LANDING CARDS
+============================================================
+
+On the Cultural category/event listing shown before selecting an individual event:
+
+DO NOT show the venue unnecessarily.
+
+The venue will be shown after the participant selects/opens the specific event.
+
+For example, category page:
+
+DANCE
+
+[ Classical Solo ]
+[ Folk Dance ]
+[ Group Dance ]
+
+Do not clutter these category cards with:
+
+Venue: RVRJC OAT
+
+When the participant opens:
+
+Classical Solo
+
+THEN show the complete event details:
+
+- Event name
+- Description
+- Rules
+- Date
+- Time
+- Venue
+- Registration deadline
+- Team size
+- Register Now
+
+Apply the same principle to Sports.
+
+============================================================
+6. REGISTRATION INFORMATION MESSAGE
+============================================================
+
+The registration confirmation/information panel currently says approximately:
+
+"Registration happens directly inside this website.
+Your data is stored securely and you receive an instant digital E-Pass with a unique registration number."
+
+Keep this concept but make it slightly more informative.
+
+Use something similar to:
+
+"Registration happens directly on the COLORIDO 2K26 website. Your submitted details are securely stored and an E-Pass with a unique registration number is generated after successful registration. Your E-Pass is important for verifying your registration on the event day, so please keep it safe and accessible."
+
+Do not make the message excessively long.
+
+============================================================
+7. GOOGLE MAPS COLLEGE LOCATION
+============================================================
+
+Where the college address/location is displayed, make it clickable.
+
+Clicking:
+
+RVR & JC College of Engineering
+or
+College Location / Address
+
+must open the official college location in Google Maps.
+
+Use the correct official RVR & JC College of Engineering location.
+
+DO NOT invent coordinates or an address.
+
+Keep the Google Maps destination configurable so it can be updated easily if needed.
+
+Open Google Maps in a new tab/window.
+
+============================================================
+8. SIGN-IN PAGE BRANDING
+============================================================
+
+On the Admin Sign In page, display the college branding at the top.
+
+Show:
+
+R.V.R. & J.C. COLLEGE OF ENGINEERING
+
+above/near the COLORIDO 2K26 admin login branding.
+
+The sign-in page should clearly establish that this is the official organizer/admin portal for the college festival.
+
+Do not expose admin credentials publicly.
+
+============================================================
+9. KEEP THE EXISTING COLORIDO 2K25 IMAGE IN ABOUT SECTION
+============================================================
+
+IMPORTANT:
+
+The previously provided COLORIDO 2K25 poster/image should remain in:
+
+"About COLORIDO"
+
+section.
+
+Do NOT remove it.
+
+Do NOT replace it with a random stock image.
+
+We will replace it later when the latest COLORIDO 2K26 official image becomes available.
+
+Use the existing uploaded COLORIDO 2K25 image as the temporary About section visual.
+
+Keep the implementation easy to replace later.
+
+============================================================
+10. CSV EXPORT — EVENT CATEGORY FILTERS
+============================================================
+
+The Admin Dashboard CSV download must support filtering.
+
+Before downloading CSV, provide selectable checkboxes such as:
+
+☐ Cultural
+☐ Boys Sports
+☐ Girls Sports
+
+The admin can select one or multiple categories.
+
+Examples:
+
+Cultural only
+→ downloads only Cultural registrations.
+
+Boys Sports + Girls Sports
+→ downloads only both Sports categories.
+
+Cultural + Boys Sports + Girls Sports
+→ downloads all registrations.
+
+Also allow:
+
+☐ Select All
+
+The downloaded CSV must contain only registrations matching the selected filters.
+
+If no category is selected, show a clear validation message instead of silently downloading an incorrect file.
+
+Keep existing registration filters/search if already implemented.
+
+============================================================
+11. BRANCH — "OTHER" OPTION
+============================================================
+
+In the registration form, Branch must have selectable options.
+
+But participants may belong to a branch that is not listed.
+
+Add:
+
+Other
+
+When "Other" is selected, immediately display:
+
+Enter Your Branch
+
+with a text input.
+
+Example:
+
+Branch:
+[ CSE ▼ ]
+
+or
+
+[ Other ▼ ]
+
+If Other:
+
+Branch Name:
+[ __________________ ]
+
+Store the final branch value correctly in the database.
+
+Do not store simply "Other" if the participant entered:
+
+Artificial Intelligence & Data Science
+
+Store the actual entered branch name.
+
+============================================================
+12. NO QR CODE SYSTEM
+============================================================
+
+IMPORTANT:
+
+REMOVE the QR-code system completely.
+
+Do NOT generate:
+
+- QR code
+- QR verification
+- QR scanner
+- QR-based entry
+
+The festival will use an E-Pass only.
+
+Do not mention QR anywhere in the public registration flow or E-pass.
+
+============================================================
+13. E-PASS DESIGN
+============================================================
+
+After successful registration, generate an E-Pass with a unique E-Pass/registration number.
+
+The E-Pass should contain ONLY relevant information.
+
+Design should be clean and printable/downloadable.
+
+Header:
+
+[COLLEGE LOGO]
+
+R.V.R. & J.C. COLLEGE OF ENGINEERING
+
+COLORIDO 2K26
+
+Then:
+
+E-PASS
+
+E-Pass / Registration Number:
+CD26000001
+
+Participant details:
+
+Name:
+College:
+Branch:
+Mobile/Email where appropriate:
+
+Event details:
+
+Category:
+Event:
+Date:
+Time:
+Venue:
+
+For team registrations, also show:
+
+Team Name:
+Captain:
+Team Members / Team Size:
+
+At the bottom include a clearly visible note:
+
+"IMPORTANT:
+This E-Pass is required to verify your registration on the event day. Please keep it safe and accessible."
+
+The E-Pass should NOT contain:
+
+- QR code
+- unnecessary technical information
+- database IDs
+- admin-only information
+
+The downloaded/printed E-Pass should look like an official event pass.
+
+============================================================
+14. E-PASS NUMBER
+============================================================
+
+Generate a unique human-readable E-Pass number.
+
+Example:
+
+CD26000001
+CD26000002
+CD26000003
+
+The number must be unique.
+
+It must be stored in the database.
+
+The same number must appear:
+
+- on the success page
+- on the downloaded E-Pass
+- in the Admin Dashboard
+
+============================================================
+15. SCHEDULE DATA MUST BE CONSISTENT
+============================================================
+
+The Admin Schedule section must use the database.
+
+When an admin creates/edits a schedule entry:
+
+Admin
+→ Save
+→ Database
+→ Public Schedule
+
+The public Schedule page must show the latest saved information.
+
+Schedule entries should correctly reference:
+
+- Category
+- Event
+- Date
+- Start time
+- End time
+- Venue
+
+Do not create separate hard-coded schedule information in the frontend.
+
+Registration data and schedule data must remain accurate and consistent.
+
+If an event is selected during registration, its event information should come from the same database event record used by the schedule.
+
+============================================================
+16. CATEGORY → EVENTS → DETAILS → REGISTER
+============================================================
+
+When a participant clicks a Cultural category, show only the events belonging to that category.
+
+Example:
+
+DANCE
+    ↓
+Classical Solo
+Folk Dance
+Group Dance
+
+Clicking an event must show:
+
+EVENT NAME
+
+Category
+
+Description
+
+Rules & Regulations
+
+Date
+
+Time
+
+Venue
+
+Registration deadline
+
+Team size / Individual
+
+NO REGISTRATION FEE
+
+[ REGISTER NOW ]
+
+The same pattern must work for:
+
+- Fine Arts
+- Music & Band
+- Dance
+- Choreoday
+- Dramatics
+- Fashion Show
+- Tekraft Events
+- Literary
+
+And for Sports:
+
+Boys Sports
+→ Volleyball / Basketball / Table Tennis
+
+Girls Sports
+→ Throwball / Tennikoit / Table Tennis
+
+============================================================
+17. CULTURAL 3D/INTERACTIVE EXPERIENCE — MOBILE
+============================================================
+
+The current interactive Cultural venue experience works well on laptop.
+
+Now make it work properly on mobile too.
+
+Requirements:
+
+Desktop:
+- mouse drag rotation
+- clickable hotspots
+- category navigation
+- smooth camera movement
+
+Mobile:
+- touch drag rotation
+- pinch/zoom if supported
+- tap hotspots
+- tap category navigation
+- responsive canvas size
+- no horizontal page overflow
+- no controls covering important content
+- no text/buttons going outside the screen
+- good performance on normal mobile devices
+
+Do NOT simply shrink the desktop canvas.
+
+Create responsive mobile behavior.
+
+If performance becomes an issue on mobile:
+
+- reduce unnecessary 3D effects
+- reduce particle count
+- reduce shadow quality
+- simplify lighting
+- use adaptive rendering
+
+But retain the interactive experience.
+
+The user should still be able to select categories/events from the mobile experience.
+
+============================================================
+18. MOBILE CATEGORY NAVIGATION
+============================================================
+
+The category navigation currently visible under the interactive scene must remain usable on mobile.
+
+It should either:
+
+- become horizontally scrollable, or
+- become a compact responsive category selector.
+
+Categories must remain easy to tap.
+
+Do not allow 8 category buttons to become tiny and unusable.
+
+============================================================
+19. IMPORTANT DATA CONSISTENCY RULE
+============================================================
+
+There must be ONE source of truth.
+
+EVENT DATABASE
+       ↓
+Public Event Page
+       ↓
+Registration Form
+       ↓
+Registration Database
+       ↓
+Admin Dashboard
+       ↓
+Schedule / Results / Statistics
+
+Do not duplicate event information manually in multiple frontend files.
+
+If an admin changes:
+
+Event name
+Description
+Team size
+Date
+Time
+Venue
+Registration deadline
+Rules
+
+the public website must use the updated database value.
+
+============================================================
+20. FINAL TESTING
+============================================================
+
+Before considering this complete, perform these tests.
+
+TEST A — BOYS SPORTS
+
+Open registration
+→ select Boys Sports
+→ clearly see:
+Volleyball / Basketball / Table Tennis
+→ select Basketball
+→ submit
+→ verify Basketball is stored in database
+→ verify Admin Dashboard says Basketball.
+
+TEST B — GIRLS SPORTS
+
+Open registration
+→ select Girls Sports
+→ clearly see:
+Throwball / Tennikoit / Table Tennis
+→ select Tennikoit
+→ submit
+→ verify Tennikoit appears correctly in Admin Dashboard.
+
+TEST C — BRANCH
+
+Select Other
+→ enter custom branch
+→ submit
+→ verify exact custom branch appears in Admin Dashboard.
+
+TEST D — E-PASS
+
+Complete registration
+→ unique E-Pass number generated
+→ no QR code
+→ download E-Pass
+→ verify participant + event + venue + date + time + E-Pass number
+→ verify warning/note is present.
+
+TEST E — DASHBOARD
+
+Create 8 dummy registrations.
+
+Verify:
+
+Total Registrations = 8
+
+and the Cultural/Boys/Girls counts add up correctly.
+
+Verify Confirmed E-Passes matches the actual confirmed records.
+
+TEST F — CSV
+
+Select:
+
+☑ Cultural
+☑ Boys Sports
+☐ Girls Sports
+
+Download CSV.
+
+Verify only Cultural + Boys Sports registrations are included.
+
+TEST G — EVENT DATA
+
+Edit an event in Admin.
+
+Change:
+- description
+- team size
+- venue
+- registration deadline
+
+Verify public event page reflects all changes.
+
+TEST H — SCHEDULE
+
+Edit schedule in Admin.
+
+Verify public Schedule immediately reflects the saved schedule.
+
+TEST I — MOBILE
+
+Open Cultural page on mobile.
+
+Verify:
+- 3D scene loads
+- touch rotation works
+- hotspots work
+- category navigation works
+- no horizontal overflow
+- events open correctly.
+
+TEST J — QR
+
+Search the entire codebase and public UI.
+
+There must be NO QR-related registration functionality.
+
+============================================================
+FINAL REQUIREMENT
+============================================================
+
+Do not mark these features as complete based only on UI appearance.
+
+Test the actual:
+
+Frontend
+→ Backend
+→ Database
+→ Admin Dashboard
+
+data flow.
+
+The Admin Dashboard statistics, registration records, event information, schedules and E-Pass information must all represent actual database data.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-28T19:09:26+05:30.
+
+The user's current state is as follows:
+Other open documents:
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\pages\admin\AdminSchedule.tsx (LANGUAGE_TSX)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\pages\admin\AdminRegistrations.tsx (LANGUAGE_TSX)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\server\src\routes\events.ts (LANGUAGE_TYPESCRIPT)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\components\cultural\CulturalEventList.tsx (LANGUAGE_TSX)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\components\common\AnnouncementTicker.tsx (LANGUAGE_TSX)
+</ADDITIONAL_METADATA>
