@@ -288,7 +288,19 @@ router.patch('/registrations/:id/status', async (req: AuthRequest, res: Response
   }
 });
 
-// ── Events Management (FULL SQLite CRUD & LIVE SYNC) ──────────────
+function parseRules(val: any): string[] {
+  if (Array.isArray(val)) return val;
+  if (!val || typeof val !== 'string') return [];
+  try {
+    const parsed = JSON.parse(val);
+    if (Array.isArray(parsed)) return parsed;
+    return [String(parsed)];
+  } catch {
+    return [val];
+  }
+}
+
+// ── Events Management (PostgreSQL & SQLite CRUD & LIVE SYNC) ──────
 router.get('/events', async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (process.env.DATABASE_URL) {
@@ -303,7 +315,7 @@ router.get('/events', async (_req: AuthRequest, res: Response): Promise<void> =>
         `);
         const processed = pgRows.rows.map((ev: any) => ({
           ...ev,
-          rules: typeof ev.rules === 'string' ? JSON.parse(ev.rules || '[]') : ev.rules,
+          rules: parseRules(ev.rules),
           reg_count: Number(ev.reg_count || 0),
         }));
         res.json({ events: processed });
@@ -314,22 +326,27 @@ router.get('/events', async (_req: AuthRequest, res: Response): Promise<void> =>
     }
 
     const db = getSqlite();
-    const rows = db.prepare(`
-      SELECT e.*, COUNT(r.id) as reg_count
-      FROM events e
-      LEFT JOIN registrations r ON (r.event_id = e.id OR r.event_id = e.slug) AND r.status != 'cancelled'
-      WHERE e.is_active = 1
-      GROUP BY e.id
-      ORDER BY e.category_name ASC, e.name ASC
-    `).all() as any[];
+    if (db) {
+      const rows = db.prepare(`
+        SELECT e.*, COUNT(r.id) as reg_count
+        FROM events e
+        LEFT JOIN registrations r ON (r.event_id = e.id OR r.event_id = e.slug) AND r.status != 'cancelled'
+        WHERE e.is_active = 1
+        GROUP BY e.id
+        ORDER BY e.category_name ASC, e.name ASC
+      `).all() as any[];
 
-    const processed = rows.map((ev: any) => ({
-      ...ev,
-      rules: typeof ev.rules === 'string' ? JSON.parse(ev.rules || '[]') : ev.rules,
-      reg_count: Number(ev.reg_count || 0),
-    }));
+      const processed = rows.map((ev: any) => ({
+        ...ev,
+        rules: parseRules(ev.rules),
+        reg_count: Number(ev.reg_count || 0),
+      }));
 
-    res.json({ events: processed });
+      res.json({ events: processed });
+      return;
+    }
+
+    res.json({ events: [] });
   } catch (error) {
     console.error('Admin events fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
@@ -338,7 +355,6 @@ router.get('/events', async (_req: AuthRequest, res: Response): Promise<void> =>
 
 router.post('/events', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const db = getSqlite();
     const {
       name, slug, category_id, category_name, type = 'cultural',
       tagline, short_description, description, rules = [],
@@ -356,27 +372,64 @@ router.post('/events', async (req: AuthRequest, res: Response): Promise<void> =>
     const id = `ev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const rulesJson = JSON.stringify(Array.isArray(rules) ? rules : [rules]);
 
-    db.prepare(`
-      INSERT INTO events
-        (id, slug, category_id, category_name, name, type, tagline, short_description,
-         description, rules, venue, schedule_date, start_time, end_time, registration_type,
-         min_team_size, max_team_size, team_size_label, gender, is_active, is_registration_open,
-         registration_deadline, requires_audio, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-    `).run(
-      id, eventSlug, category_id, category_name || category_id, name, type,
-      tagline || null, short_description || null, description || null, rulesJson,
-      venue || 'RVRJC Open Air Theatre (OAT)', schedule_date || '2026-02-26',
-      start_time || '10:00', end_time || '13:00', registration_type,
-      min_team_size, max_team_size, team_size_label || `${min_team_size} - ${max_team_size} Members`,
-      gender, is_registration_open ? 1 : 0, registration_deadline || '2026-10-15T23:59:59.000Z',
-      requires_audio ? 1 : 0, new Date().toISOString()
-    );
+    if (process.env.DATABASE_URL) {
+      try {
+        const pgRes = await query(`
+          INSERT INTO events
+            (slug, category_name, name, type, tagline, short_description,
+             description, rules, venue, schedule_date, start_time, end_time, registration_type,
+             min_team_size, max_team_size, team_size_label, gender, is_active, is_registration_open,
+             registration_deadline, requires_audio, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, TRUE, $18, $19, $20, NOW())
+          RETURNING *
+        `, [
+          eventSlug, category_name || category_id, name, type,
+          tagline || null, short_description || null, description || null, rulesJson,
+          venue || 'RVRJC Open Air Theatre (OAT)', schedule_date || '2026-02-26',
+          start_time || '10:00', end_time || '13:00', registration_type,
+          Number(min_team_size), Number(max_team_size), team_size_label || `${min_team_size} - ${max_team_size} Members`,
+          gender, Boolean(is_registration_open), registration_deadline || '2026-10-15T23:59:59.000Z',
+          Boolean(requires_audio)
+        ]);
 
-    const created = db.prepare('SELECT * FROM events WHERE id = ?').get(id) as any;
-    if (created) created.rules = tryParseJson(created.rules);
+        if (pgRes.rows.length) {
+          const ev = pgRes.rows[0];
+          ev.rules = parseRules(ev.rules);
+          res.status(201).json({ event: ev });
+          return;
+        }
+      } catch (err) {
+        console.warn('Postgres create event error:', err);
+      }
+    }
 
-    res.status(201).json({ event: created });
+    const db = getSqlite();
+    if (db) {
+      db.prepare(`
+        INSERT INTO events
+          (id, slug, category_id, category_name, name, type, tagline, short_description,
+           description, rules, venue, schedule_date, start_time, end_time, registration_type,
+           min_team_size, max_team_size, team_size_label, gender, is_active, is_registration_open,
+           registration_deadline, requires_audio, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+      `).run(
+        id, eventSlug, category_id, category_name || category_id, name, type,
+        tagline || null, short_description || null, description || null, rulesJson,
+        venue || 'RVRJC Open Air Theatre (OAT)', schedule_date || '2026-02-26',
+        start_time || '10:00', end_time || '13:00', registration_type,
+        min_team_size, max_team_size, team_size_label || `${min_team_size} - ${max_team_size} Members`,
+        gender, is_registration_open ? 1 : 0, registration_deadline || '2026-10-15T23:59:59.000Z',
+        requires_audio ? 1 : 0, new Date().toISOString()
+      );
+
+      const created = db.prepare('SELECT * FROM events WHERE id = ?').get(id) as any;
+      if (created) created.rules = parseRules(created.rules);
+
+      res.status(201).json({ event: created });
+      return;
+    }
+
+    res.status(500).json({ error: 'Database not available' });
   } catch (error) {
     console.error('Admin create event error:', error);
     res.status(500).json({ error: 'Failed to create event' });
@@ -385,13 +438,6 @@ router.post('/events', async (req: AuthRequest, res: Response): Promise<void> =>
 
 router.patch('/events/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const db = getSqlite();
-    const existing = db.prepare('SELECT * FROM events WHERE id = ? OR slug = ?').get(req.params.id, req.params.id) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Event not found' });
-      return;
-    }
-
     const {
       name, category_name, category_id, type, tagline, short_description,
       description, rules, venue, schedule_date, start_time, end_time,
@@ -399,66 +445,105 @@ router.patch('/events/:id', async (req: AuthRequest, res: Response): Promise<voi
       gender, is_registration_open, registration_deadline, requires_audio, is_active
     } = req.body;
 
-    const rulesJson = rules !== undefined ? (typeof rules === 'string' ? rules : JSON.stringify(rules)) : existing.rules;
-    const deadlineUpdated = registration_deadline !== undefined && registration_deadline !== existing.registration_deadline
-      ? new Date().toISOString()
-      : existing.registration_deadline_updated_at;
+    const rulesJson = rules !== undefined ? (typeof rules === 'string' ? rules : JSON.stringify(rules)) : undefined;
 
-    db.prepare(`
-      UPDATE events SET
-        name = ?,
-        category_name = ?,
-        category_id = ?,
-        type = ?,
-        tagline = ?,
-        short_description = ?,
-        description = ?,
-        rules = ?,
-        venue = ?,
-        schedule_date = ?,
-        start_time = ?,
-        end_time = ?,
-        registration_type = ?,
-        min_team_size = ?,
-        max_team_size = ?,
-        team_size_label = ?,
-        gender = ?,
-        is_registration_open = ?,
-        registration_deadline = ?,
-        registration_deadline_updated_at = ?,
-        requires_audio = ?,
-        is_active = ?
-      WHERE id = ?
-    `).run(
-      name ?? existing.name,
-      category_name ?? existing.category_name,
-      category_id ?? existing.category_id,
-      type ?? existing.type,
-      tagline !== undefined ? tagline : existing.tagline,
-      short_description ?? existing.short_description,
-      description ?? existing.description,
-      rulesJson,
-      venue ?? existing.venue,
-      schedule_date ?? existing.schedule_date,
-      start_time ?? existing.start_time,
-      end_time ?? existing.end_time,
-      registration_type ?? existing.registration_type,
-      min_team_size !== undefined ? Number(min_team_size) : existing.min_team_size,
-      max_team_size !== undefined ? Number(max_team_size) : existing.max_team_size,
-      team_size_label ?? existing.team_size_label,
-      gender ?? existing.gender,
-      is_registration_open !== undefined ? (is_registration_open ? 1 : 0) : existing.is_registration_open,
-      registration_deadline !== undefined ? registration_deadline : existing.registration_deadline,
-      deadlineUpdated,
-      requires_audio !== undefined ? (requires_audio ? 1 : 0) : existing.requires_audio,
-      is_active !== undefined ? (is_active ? 1 : 0) : existing.is_active,
-      existing.id
-    );
+    if (process.env.DATABASE_URL) {
+      try {
+        const pgRes = await query(`
+          UPDATE events SET
+            name = COALESCE($1, name),
+            category_name = COALESCE($2, category_name),
+            type = COALESCE($3, type),
+            tagline = COALESCE($4, tagline),
+            short_description = COALESCE($5, short_description),
+            description = COALESCE($6, description),
+            rules = COALESCE($7, rules),
+            venue = COALESCE($8, venue),
+            schedule_date = COALESCE($9, schedule_date),
+            start_time = COALESCE($10, start_time),
+            end_time = COALESCE($11, end_time),
+            registration_type = COALESCE($12, registration_type),
+            min_team_size = COALESCE($13, min_team_size),
+            max_team_size = COALESCE($14, max_team_size),
+            team_size_label = COALESCE($15, team_size_label),
+            gender = COALESCE($16, gender),
+            is_registration_open = COALESCE($17, is_registration_open),
+            registration_deadline = COALESCE($18, registration_deadline),
+            requires_audio = COALESCE($19, requires_audio),
+            is_active = COALESCE($20, is_active),
+            updated_at = NOW()
+          WHERE id::text = $21 OR slug = $21
+          RETURNING *
+        `, [
+          name, category_name, type, tagline, short_description, description,
+          rulesJson, venue, schedule_date, start_time, end_time, registration_type,
+          min_team_size !== undefined ? Number(min_team_size) : null,
+          max_team_size !== undefined ? Number(max_team_size) : null,
+          team_size_label, gender,
+          is_registration_open !== undefined ? Boolean(is_registration_open) : null,
+          registration_deadline,
+          requires_audio !== undefined ? Boolean(requires_audio) : null,
+          is_active !== undefined ? Boolean(is_active) : null,
+          req.params.id
+        ]);
 
-    const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(existing.id) as any;
-    if (updated) updated.rules = tryParseJson(updated.rules);
+        if (pgRes.rows.length) {
+          const ev = pgRes.rows[0];
+          ev.rules = parseRules(ev.rules);
+          res.json({ event: ev, message: 'Event updated successfully' });
+          return;
+        }
+      } catch (err) {
+        console.warn('Postgres update event error:', err);
+      }
+    }
 
-    res.json({ event: updated, message: 'Event updated successfully' });
+    const db = getSqlite();
+    if (db) {
+      const existing = db.prepare('SELECT * FROM events WHERE id = ? OR slug = ?').get(req.params.id, req.params.id) as any;
+      if (!existing) {
+        res.status(404).json({ error: 'Event not found' });
+        return;
+      }
+
+      const deadlineUpdated = registration_deadline !== undefined && registration_deadline !== existing.registration_deadline
+        ? new Date().toISOString()
+        : existing.registration_deadline_updated_at;
+
+      db.prepare(`
+        UPDATE events SET
+          name = ?, category_name = ?, category_id = ?, type = ?, tagline = ?,
+          short_description = ?, description = ?, rules = ?, venue = ?, schedule_date = ?,
+          start_time = ?, end_time = ?, registration_type = ?, min_team_size = ?,
+          max_team_size = ?, team_size_label = ?, gender = ?, is_registration_open = ?,
+          registration_deadline = ?, registration_deadline_updated_at = ?,
+          requires_audio = ?, is_active = ?
+        WHERE id = ?
+      `).run(
+        name ?? existing.name, category_name ?? existing.category_name, category_id ?? existing.category_id,
+        type ?? existing.type, tagline !== undefined ? tagline : existing.tagline,
+        short_description ?? existing.short_description, description ?? existing.description,
+        rulesJson ?? existing.rules, venue ?? existing.venue, schedule_date ?? existing.schedule_date,
+        start_time ?? existing.start_time, end_time ?? existing.end_time,
+        registration_type ?? existing.registration_type,
+        min_team_size !== undefined ? Number(min_team_size) : existing.min_team_size,
+        max_team_size !== undefined ? Number(max_team_size) : existing.max_team_size,
+        team_size_label ?? existing.team_size_label, gender ?? existing.gender,
+        is_registration_open !== undefined ? (is_registration_open ? 1 : 0) : existing.is_registration_open,
+        registration_deadline !== undefined ? registration_deadline : existing.registration_deadline,
+        deadlineUpdated, requires_audio !== undefined ? (requires_audio ? 1 : 0) : existing.requires_audio,
+        is_active !== undefined ? (is_active ? 1 : 0) : existing.is_active,
+        existing.id
+      );
+
+      const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(existing.id) as any;
+      if (updated) updated.rules = parseRules(updated.rules);
+
+      res.json({ event: updated, message: 'Event updated successfully' });
+      return;
+    }
+
+    res.status(404).json({ error: 'Event not found' });
   } catch (error) {
     console.error('Admin update event error:', error);
     res.status(500).json({ error: 'Failed to update event' });
@@ -467,8 +552,19 @@ router.patch('/events/:id', async (req: AuthRequest, res: Response): Promise<voi
 
 router.delete('/events/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    if (process.env.DATABASE_URL) {
+      try {
+        await query('UPDATE events SET is_active = FALSE WHERE id::text = $1 OR slug = $1', [req.params.id]);
+      } catch (err) {
+        console.warn('Postgres delete event error:', err);
+      }
+    }
+
     const db = getSqlite();
-    db.prepare('UPDATE events SET is_active = 0 WHERE id = ? OR slug = ?').run(req.params.id, req.params.id);
+    if (db) {
+      db.prepare('UPDATE events SET is_active = 0 WHERE id = ? OR slug = ?').run(req.params.id, req.params.id);
+    }
+
     res.json({ success: true, message: 'Event deactivated successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to deactivate event' });
