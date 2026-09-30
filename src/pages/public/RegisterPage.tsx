@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { culturalCategories, boysSportsEvents, girlsSportsEvents } from '../../data/festivalData';
 import { getEvents, registerForEvent, uploadAudioFile } from '../../lib/api';
+import { getISTEventTimestamp, calculateCountdown } from '../../utils/timeUtils';
 import {
   Ticket, ShieldCheck, ArrowRight, Users, User, AlertCircle,
   CheckCircle, Trophy, Sparkles, ChevronDown, Loader2, Clock, Upload, Music, Trash2
@@ -70,14 +71,14 @@ const RegisterPage: React.FC = () => {
   const [agreeRules, setAgreeRules] = useState(false);
   const [formError, setFormError] = useState('');
 
-  /* ── Countdown Timer State ── */
-  const [timeRemaining, setTimeRemaining] = useState<{
+  /* ── Event Countdown Timer State (START DATE + START TIME in IST) ── */
+  const [countdown, setCountdown] = useState<{
     days: number;
     hours: number;
     minutes: number;
     seconds: number;
-    isExpired: boolean;
-  }>({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false });
+    isStarted: boolean;
+  }>({ days: 0, hours: 0, minutes: 0, seconds: 0, isStarted: false });
 
   // Fetch live events from API
   useEffect(() => {
@@ -316,35 +317,29 @@ const RegisterPage: React.FC = () => {
     setFormError('');
   }, [activeEvent?.id, activeEvent?.slug]);
 
-  /* ── Live Deadline Countdown Timer ── */
+  /* ── Live Event Countdown Timer (using configured START DATE + START TIME in IST) ── */
   useEffect(() => {
-    if (!activeEvent?.registration_deadline) {
-      setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false });
-      return;
-    }
+    const eventStartDate = activeEvent?.schedule_date || activeEvent?.event_date || '2026-10-08';
+    const eventStartTime = activeEvent?.start_time || '10:00 AM';
+    const targetTimestamp = getISTEventTimestamp(eventStartDate, eventStartTime);
 
-    const calculateTime = () => {
-      const target = new Date(activeEvent.registration_deadline).getTime();
-      const now = Date.now();
-      const diff = target - now;
-
-      if (diff <= 0 || activeEvent.is_registration_open === 0) {
-        setTimeRemaining({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: true });
-      } else {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-        const minutes = Math.floor((diff / (1000 * 60)) % 60);
-        const seconds = Math.floor((diff / 1000) % 60);
-        setTimeRemaining({ days, hours, minutes, seconds, isExpired: false });
-      }
+    const updateTimer = () => {
+      const res = calculateCountdown(targetTimestamp);
+      setCountdown({
+        days: res.days,
+        hours: res.hours,
+        minutes: res.minutes,
+        seconds: res.seconds,
+        isStarted: res.isStarted,
+      });
     };
 
-    calculateTime();
-    const interval = setInterval(calculateTime, 1000);
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [activeEvent?.registration_deadline, activeEvent?.is_registration_open]);
+  }, [activeEvent?.schedule_date, activeEvent?.event_date, activeEvent?.start_time]);
 
-  const isClosed = timeRemaining.isExpired || activeEvent?.is_registration_open === 0;
+  const isClosed = activeEvent?.is_registration_open === 0 || activeEvent?.is_registration_open === false;
 
   const addMember = () => {
     if (members.length < maxTeamSize - 1) {
@@ -420,6 +415,7 @@ const RegisterPage: React.FC = () => {
   /* ── Submit ── */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return; // Prevent double submission
     const err = validate();
     if (err) { setFormError(err); toast.error(err); return; }
     setFormError('');
@@ -665,27 +661,44 @@ const RegisterPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Registration Countdown Timer / Status */}
+                {/* Event Countdown Timer / Status */}
                 <div className="pt-2 border-t border-white/10">
                   {isClosed ? (
                     <div className="flex items-center space-x-2 text-rose-400 text-xs font-bold bg-rose-500/10 border border-rose-500/30 px-3.5 py-2 rounded-xl">
                       <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                      <span>REGISTRATIONS CLOSED: The deadline for this event has expired or registration was closed by organizers.</span>
+                      <span>REGISTRATIONS CLOSED: Registration for this competition has been closed by event coordinators.</span>
+                    </div>
+                  ) : countdown.isStarted ? (
+                    <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-2 rounded-xl">
+                      <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+                      <span>EVENT IN PROGRESS: This event has officially started. Reporting and registrations are underway.</span>
                     </div>
                   ) : (
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs bg-black/40 border border-white/10 px-3.5 py-2.5 rounded-xl">
                       <div className="flex items-center space-x-2 text-amber-300 font-bold">
                         <Clock className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '4s' }} />
-                        <span>Registration Closes In:</span>
+                        <span>Event Starts In:</span>
                       </div>
-                      <div className="flex items-center space-x-1 font-mono font-black text-amber-300 text-xs sm:text-sm">
-                        <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(timeRemaining.days).padStart(2, '0')}d</span>
+                      <div className="flex items-center space-x-2 font-mono font-black text-amber-300 text-xs sm:text-sm">
+                        <div className="flex items-center space-x-1">
+                          <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(countdown.days).padStart(2, '0')}</span>
+                          <span className="text-[10px] text-slate-400 font-sans uppercase">Days</span>
+                        </div>
                         <span>:</span>
-                        <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(timeRemaining.hours).padStart(2, '0')}h</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(countdown.hours).padStart(2, '0')}</span>
+                          <span className="text-[10px] text-slate-400 font-sans uppercase">Hours</span>
+                        </div>
                         <span>:</span>
-                        <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(timeRemaining.minutes).padStart(2, '0')}m</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(countdown.minutes).padStart(2, '0')}</span>
+                          <span className="text-[10px] text-slate-400 font-sans uppercase">Minutes</span>
+                        </div>
                         <span>:</span>
-                        <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(timeRemaining.seconds).padStart(2, '0')}s</span>
+                        <div className="flex items-center space-x-1">
+                          <span className="bg-amber-400/20 px-2 py-0.5 rounded">{String(countdown.seconds).padStart(2, '0')}</span>
+                          <span className="text-[10px] text-slate-400 font-sans uppercase">Seconds</span>
+                        </div>
                       </div>
                     </div>
                   )}

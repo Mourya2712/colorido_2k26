@@ -5,6 +5,7 @@ import {
   Search, Edit3, Music, Clock, RefreshCw, Plus
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatTo12Hour } from '../../utils/timeUtils';
 
 export interface AdminEventData {
   id: string;
@@ -57,8 +58,8 @@ const initialNewEvent = {
   description: '',
   venue: 'RVRJC Open Air Theatre (OAT)',
   schedule_date: '2026-02-26',
-  start_time: '10:00',
-  end_time: '13:00',
+  start_time: '10:00 AM',
+  end_time: '01:00 PM',
   registration_type: 'individual' as 'individual' | 'team',
   min_team_size: 1,
   max_team_size: 1,
@@ -67,6 +68,74 @@ const initialNewEvent = {
   is_registration_open: 1,
   registration_deadline: '2026-10-15T23:59:59.000Z',
   requires_audio: 0,
+};
+
+// ── 12-Hour Time Input Component with AM/PM ─────────────────────────────
+const Time12Input: React.FC<{
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+}> = ({ label, value, onChange }) => {
+  const formatted = formatTo12Hour(value) || '10:00 AM';
+  const match = formatted.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const hour = match ? match[1].padStart(2, '0') : '10';
+  const minute = match ? match[2] : '00';
+  const ampm = match ? match[3].toUpperCase() : 'AM';
+
+  const update = (newH: string, newM: string, newP: string) => {
+    onChange(`${newH.padStart(2, '0')}:${newM.padStart(2, '0')} ${newP}`);
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-bold text-slate-300 mb-1">{label} (12-Hour Clock)</label>
+      <div className="flex items-center space-x-1.5 bg-black/40 border border-white/10 p-2 rounded-xl">
+        <select
+          value={hour}
+          onChange={(e) => update(e.target.value, minute, ampm)}
+          className="bg-transparent text-white font-mono text-xs font-bold focus:outline-none cursor-pointer"
+        >
+          {['01','02','03','04','05','06','07','08','09','10','11','12'].map((h) => (
+            <option key={h} value={h} className="bg-[#141026] text-white">{h}</option>
+          ))}
+        </select>
+        <span className="text-purple-400 font-bold">:</span>
+        <select
+          value={minute}
+          onChange={(e) => update(hour, e.target.value, ampm)}
+          className="bg-transparent text-white font-mono text-xs font-bold focus:outline-none cursor-pointer"
+        >
+          {['00','05','10','15','20','25','30','35','40','45','50','55'].map((m) => (
+            <option key={m} value={m} className="bg-[#141026] text-white">{m}</option>
+          ))}
+        </select>
+        <div className="flex rounded-lg overflow-hidden border border-white/15 ml-auto">
+          <button
+            type="button"
+            onClick={() => update(hour, minute, 'AM')}
+            className={`px-2.5 py-1 text-[10px] font-black font-mono transition-colors ${
+              ampm === 'AM'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-white/5 text-slate-400 hover:text-white'
+            }`}
+          >
+            AM
+          </button>
+          <button
+            type="button"
+            onClick={() => update(hour, minute, 'PM')}
+            className={`px-2.5 py-1 text-[10px] font-black font-mono transition-colors ${
+              ampm === 'PM'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-white/5 text-slate-400 hover:text-white'
+            }`}
+          >
+            PM
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const AdminEvents: React.FC = () => {
@@ -101,7 +170,12 @@ const AdminEvents: React.FC = () => {
   }, []);
 
   const openEditModal = (ev: AdminEventData) => {
-    setEditingEvent({ ...ev });
+    setEditingEvent({
+      ...ev,
+      schedule_date: ev.schedule_date || '2026-02-26',
+      start_time: formatTo12Hour(ev.start_time) || '10:00 AM',
+      end_time: formatTo12Hour(ev.end_time) || '01:00 PM',
+    });
     if (Array.isArray(ev.rules)) {
       const text = ev.rules.map((r: any) => (typeof r === 'string' ? r : r.title ? `${r.title}: ${r.points?.join(' ') || ''}` : '')).filter(Boolean).join('\n');
       setRulesText(text);
@@ -165,6 +239,9 @@ const AdminEvents: React.FC = () => {
         short_description: editingEvent.short_description,
         description: editingEvent.description,
         venue: editingEvent.venue,
+        schedule_date: editingEvent.schedule_date || '2026-02-26',
+        start_time: editingEvent.start_time || '10:00 AM',
+        end_time: editingEvent.end_time || '01:00 PM',
         rules: parsedRules,
         registration_type: editingEvent.registration_type,
         min_team_size: Number(editingEvent.min_team_size),
@@ -569,6 +646,35 @@ const AdminEvents: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Event Date & Time */}
+                <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-3">
+                  <p className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center space-x-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Event Date &amp; Schedule Time</span>
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-300 mb-1">Event Date</label>
+                      <input
+                        type="date"
+                        value={editingEvent.schedule_date || '2026-02-26'}
+                        onChange={(e) => setEditingEvent({ ...editingEvent, schedule_date: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                    <Time12Input
+                      label="Start Time"
+                      value={editingEvent.start_time || '10:00 AM'}
+                      onChange={(val) => setEditingEvent({ ...editingEvent, start_time: val })}
+                    />
+                    <Time12Input
+                      label="End Time"
+                      value={editingEvent.end_time || '01:00 PM'}
+                      onChange={(val) => setEditingEvent({ ...editingEvent, end_time: val })}
+                    />
+                  </div>
+                </div>
+
                 {/* Team Size Controls (Only for Team events) */}
                 {editingEvent.registration_type === 'team' && (
                   <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-3">
@@ -944,26 +1050,16 @@ const AdminEvents: React.FC = () => {
 
                 {/* Timing (Start & End Time) */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">Start Time</label>
-                    <input
-                      type="text"
-                      placeholder="10:00"
-                      value={newEvent.start_time}
-                      onChange={(e) => setNewEvent({ ...newEvent, start_time: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-300 mb-1">End Time</label>
-                    <input
-                      type="text"
-                      placeholder="13:00"
-                      value={newEvent.end_time}
-                      onChange={(e) => setNewEvent({ ...newEvent, end_time: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
+                  <Time12Input
+                    label="Start Time"
+                    value={newEvent.start_time}
+                    onChange={(val) => setNewEvent({ ...newEvent, start_time: val })}
+                  />
+                  <Time12Input
+                    label="End Time"
+                    value={newEvent.end_time}
+                    onChange={(val) => setNewEvent({ ...newEvent, end_time: val })}
+                  />
                 </div>
 
                 {/* Song / Audio Upload Toggle */}

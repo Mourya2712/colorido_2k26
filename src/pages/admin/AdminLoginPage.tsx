@@ -24,24 +24,10 @@ const AdminLoginPage: React.FC = () => {
       await login(email, password);
       toast.success('Organizer access granted. Welcome to COLORIDO Console!');
       navigate('/admin/dashboard');
-    } catch {
-      // Graceful demo login fallback so evaluator can inspect all admin features even if backend db is not started
-      if (email === 'admin@colorido.edu' || email.includes('admin') || password === 'Colorido2026!') {
-        const mockAdmin = {
-          id: 'admin-1',
-          name: 'Chief Convener',
-          email: email || 'admin@colorido.edu',
-          role: 'super_admin',
-        };
-        const mockToken = 'mock_jwt_token_colorido_2k26_admin';
-        localStorage.setItem('colorido_admin_token', mockToken);
-        localStorage.setItem('colorido_admin_user', JSON.stringify(mockAdmin));
-        toast.success('Logged in as Festival Chief Convener!');
-        // Reload or navigate
-        window.location.href = '/admin/dashboard';
-      } else {
-        toast.error('Invalid credentials. Hint: click "Use Demo Credentials".');
-      }
+    } catch (err: any) {
+      console.error('Admin login error:', err);
+      const errMsg = err?.response?.data?.error || err?.message || 'Invalid email or password. Please verify your credentials.';
+      toast.error(errMsg);
     } finally {
       setLoading(false);
     }

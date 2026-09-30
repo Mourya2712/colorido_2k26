@@ -7,6 +7,10 @@ import { rateLimit } from 'express-rate-limit';
 
 // Load env vars
 dotenv.config();
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: path.join(__dirname, '../.env') });
+  dotenv.config({ path: path.join(process.cwd(), 'server/.env') });
+}
 
 // Import routes
 import eventsRouter from './routes/events';

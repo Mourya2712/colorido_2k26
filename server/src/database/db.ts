@@ -6,6 +6,10 @@ import fs from 'fs';
 import { seedCategories, seedEvents } from './seedData';
 
 dotenv.config();
+if (!process.env.DATABASE_URL) {
+  dotenv.config({ path: path.join(__dirname, '../../.env') });
+  dotenv.config({ path: path.join(process.cwd(), 'server/.env') });
+}
 
 let usePg = Boolean(process.env.DATABASE_URL);
 const pgPool = new Pool({
@@ -192,6 +196,8 @@ try { sqlite.exec("ALTER TABLE schedule_items ADD COLUMN event_id TEXT"); } catc
 try { sqlite.exec("ALTER TABLE schedule_items ADD COLUMN display_order INTEGER DEFAULT 0"); } catch {}
 try { sqlite.exec("ALTER TABLE schedule_items ADD COLUMN is_active INTEGER DEFAULT 1"); } catch {}
 try { sqlite.exec("ALTER TABLE schedule_items ADD COLUMN created_at TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE events ADD COLUMN end_date TEXT DEFAULT '2026-10-08'"); } catch {}
+try { sqlite.exec("UPDATE events SET end_date = '2026-10-08' WHERE end_date IS NULL OR end_date = ''"); } catch {}
 
 // Purge invalid 4th sports events (strictly 3 per gender)
 try {
@@ -210,7 +216,11 @@ if (!seedAdmin.get('admin@colorido.edu')) {
   insertAdmin.run('admin-1', 'admin@colorido.edu', bcrypt.hashSync('Colorido2026!', 10), 'COLORIDO Convener', 'super_admin');
 }
 if (!seedAdmin.get('admin@colorido2k26.com')) {
-  insertAdmin.run('admin-2', 'admin@colorido2k26.com', bcrypt.hashSync('colorido@2026', 10), 'Chief Organizer', 'super_admin');
+  insertAdmin.run('admin-2', 'admin@colorido2k26.com', bcrypt.hashSync('Colorido2k26!', 10), 'Chief Organizer', 'super_admin');
+} else {
+  try {
+    sqlite.prepare("UPDATE admins SET password_hash = ? WHERE email = 'admin@colorido2k26.com'").run(bcrypt.hashSync('Colorido2k26!', 10));
+  } catch {}
 }
 
 // Seed categories if empty

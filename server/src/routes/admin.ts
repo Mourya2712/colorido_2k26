@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { query, getSqlite } from '../database/db';
 import { authenticateAdmin, AuthRequest } from '../middleware/auth';
 
@@ -353,6 +354,58 @@ router.get('/events', async (_req: AuthRequest, res: Response): Promise<void> =>
   }
 });
 
+// Helper to parse 12-hour or 24-hour time to HH:MM:00 for PostgreSQL TIME column
+function normalizeTimeForDb(timeStr?: string): string | null {
+  if (!timeStr) return null;
+  const s = String(timeStr).trim();
+  const match12 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)$/i);
+  if (match12) {
+    let h = parseInt(match12[1], 10);
+    const m = match12[2];
+    const ampm = match12[4].toUpperCase();
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${m}:00`;
+  }
+  const match24 = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (match24) {
+    return `${String(parseInt(match24[1], 10)).padStart(2, '0')}:${match24[2]}:00`;
+  }
+  return s;
+}
+
+// Resolve category UUID and name against Supabase event_categories
+async function resolveCategoryInfo(categoryId?: string, categoryName?: string): Promise<{ id: string | null; name: string; type: string }> {
+  if (process.env.DATABASE_URL) {
+    try {
+      const res = await query(
+        `SELECT id, name, type FROM event_categories 
+         WHERE id::text = $1 
+            OR LOWER(name) = LOWER($2) 
+            OR LOWER(name) = LOWER($3)
+            OR LOWER(REPLACE(name, ' ', '-')) LIKE LOWER($4) 
+         LIMIT 1`,
+        [
+          categoryId || '',
+          categoryName || '',
+          categoryId || '',
+          `%${(categoryId || '').replace(/-sports$/, '')}%`
+        ]
+      );
+      if (res.rows.length > 0) {
+        return { id: res.rows[0].id, name: res.rows[0].name, type: res.rows[0].type || 'cultural' };
+      }
+    } catch (e) {
+      console.warn('resolveCategoryInfo error:', e);
+    }
+  }
+  return {
+    id: categoryId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(categoryId) ? categoryId : null,
+    name: categoryName || categoryId || 'Cultural',
+    type: (categoryId || '').includes('sport') ? 'sports' : 'cultural'
+  };
+}
+
 router.post('/events', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const {
@@ -369,37 +422,80 @@ router.post('/events', async (req: AuthRequest, res: Response): Promise<void> =>
     }
 
     const eventSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const id = `ev-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const id = crypto.randomUUID();
     const rulesJson = JSON.stringify(Array.isArray(rules) ? rules : [rules]);
 
-    if (process.env.DATABASE_URL) {
-      try {
-        const pgRes = await query(`
-          INSERT INTO events
-            (slug, category_name, name, type, tagline, short_description,
-             description, rules, venue, schedule_date, start_time, end_time, registration_type,
-             min_team_size, max_team_size, team_size_label, gender, is_active, is_registration_open,
-             registration_deadline, requires_audio, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, TRUE, $18, $19, $20, NOW())
-          RETURNING *
-        `, [
-          eventSlug, category_name || category_id, name, type,
-          tagline || null, short_description || null, description || null, rulesJson,
-          venue || 'RVRJC Open Air Theatre (OAT)', schedule_date || '2026-02-26',
-          start_time || '10:00', end_time || '13:00', registration_type,
-          Number(min_team_size), Number(max_team_size), team_size_label || `${min_team_size} - ${max_team_size} Members`,
-          gender, Boolean(is_registration_open), registration_deadline || '2026-10-15T23:59:59.000Z',
-          Boolean(requires_audio)
-        ]);
+    const catInfo = await resolveCategoryInfo(category_id, category_name);
+    const resolvedCatName = catInfo.name || category_name || 'General';
+    const resolvedCatId = catInfo.id;
 
-        if (pgRes.rows.length) {
-          const ev = pgRes.rows[0];
-          ev.rules = parseRules(ev.rules);
-          res.status(201).json({ event: ev });
-          return;
+    let dbType = 'cultural';
+    let dbGender = gender || 'all';
+
+    if (category_id === 'boys-sports' || category_name === 'Boys Sports' || type === 'sports_boys' || type === 'boys_sports') {
+      dbType = 'sports';
+      dbGender = 'boys';
+    } else if (category_id === 'girls-sports' || category_name === 'Girls Sports' || type === 'sports_girls' || type === 'girls_sports') {
+      dbType = 'sports';
+      dbGender = 'girls';
+    } else if (type === 'sports' || catInfo.type === 'sports') {
+      dbType = 'sports';
+      dbGender = gender || 'all';
+    }
+
+    const normStartTime = normalizeTimeForDb(start_time) || '10:00:00';
+    const normEndTime = normalizeTimeForDb(end_time) || '13:00:00';
+    const computedTeamSizeLabel = team_size_label || (registration_type === 'team' ? `${min_team_size} - ${max_team_size} Members` : 'Individual Solo');
+
+    if (process.env.DATABASE_URL) {
+      const pgRes = await query(`
+        INSERT INTO events
+          (id, slug, category_id, category_name, name, type, tagline, short_description,
+           description, rules, venue, schedule_date, start_time, end_time, registration_type,
+           min_team_size, max_team_size, team_size_label, gender, is_active, is_registration_open,
+           registration_deadline, requires_audio, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, TRUE, $20, $21, $22, NOW())
+        RETURNING *
+      `, [
+        id, eventSlug, resolvedCatId, resolvedCatName, name, dbType,
+        tagline || null, short_description || null, description || null, rulesJson,
+        venue || 'RVRJC Open Air Theatre (OAT)', schedule_date || '2026-02-26',
+        normStartTime, normEndTime, registration_type || 'individual',
+        Number(min_team_size) || 1, Number(max_team_size) || 1, computedTeamSizeLabel,
+        dbGender, Boolean(is_registration_open), registration_deadline || '2026-10-15T23:59:59.000Z',
+        Boolean(requires_audio)
+      ]);
+
+      if (pgRes.rows.length) {
+        const ev = pgRes.rows[0];
+        ev.rules = parseRules(ev.rules);
+
+        // Mirror to SQLite for local development consistency
+        const db = getSqlite();
+        if (db) {
+          try {
+            db.prepare(`
+              INSERT OR REPLACE INTO events
+                (id, slug, category_id, category_name, name, type, tagline, short_description,
+                 description, rules, venue, schedule_date, start_time, end_time, registration_type,
+                 min_team_size, max_team_size, team_size_label, gender, is_active, is_registration_open,
+                 registration_deadline, requires_audio, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+            `).run(
+              ev.id, ev.slug, category_id || ev.category_id, ev.category_name, ev.name, ev.type,
+              ev.tagline, ev.short_description, ev.description, JSON.stringify(ev.rules),
+              ev.venue, ev.schedule_date, ev.start_time, ev.end_time, ev.registration_type,
+              ev.min_team_size, ev.max_team_size, ev.team_size_label, ev.gender,
+              ev.is_registration_open ? 1 : 0, ev.registration_deadline, ev.requires_audio ? 1 : 0,
+              ev.created_at
+            );
+          } catch (sqliteErr) {
+            console.warn('SQLite mirror warning:', sqliteErr);
+          }
         }
-      } catch (err) {
-        console.warn('Postgres create event error:', err);
+
+        res.status(201).json({ event: ev });
+        return;
       }
     }
 
@@ -413,12 +509,12 @@ router.post('/events', async (req: AuthRequest, res: Response): Promise<void> =>
            registration_deadline, requires_audio, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
       `).run(
-        id, eventSlug, category_id, category_name || category_id, name, type,
+        id, eventSlug, category_id, resolvedCatName, name, dbType,
         tagline || null, short_description || null, description || null, rulesJson,
         venue || 'RVRJC Open Air Theatre (OAT)', schedule_date || '2026-02-26',
-        start_time || '10:00', end_time || '13:00', registration_type,
-        min_team_size, max_team_size, team_size_label || `${min_team_size} - ${max_team_size} Members`,
-        gender, is_registration_open ? 1 : 0, registration_deadline || '2026-10-15T23:59:59.000Z',
+        normStartTime, normEndTime, registration_type,
+        min_team_size, max_team_size, computedTeamSizeLabel,
+        dbGender, is_registration_open ? 1 : 0, registration_deadline || '2026-10-15T23:59:59.000Z',
         requires_audio ? 1 : 0, new Date().toISOString()
       );
 
@@ -430,9 +526,9 @@ router.post('/events', async (req: AuthRequest, res: Response): Promise<void> =>
     }
 
     res.status(500).json({ error: 'Database not available' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Admin create event error:', error);
-    res.status(500).json({ error: 'Failed to create event' });
+    res.status(500).json({ error: error?.message || 'Failed to create event' });
   }
 });
 
@@ -445,56 +541,113 @@ router.patch('/events/:id', async (req: AuthRequest, res: Response): Promise<voi
       gender, is_registration_open, registration_deadline, requires_audio, is_active
     } = req.body;
 
+    const catInfo = (category_id || category_name) ? await resolveCategoryInfo(category_id, category_name) : null;
+    let dbType: string | undefined = type;
+    let dbGender: string | undefined = gender;
+
+    if (category_id === 'boys-sports' || category_name === 'Boys Sports' || type === 'sports_boys' || type === 'boys_sports') {
+      dbType = 'sports';
+      dbGender = 'boys';
+    } else if (category_id === 'girls-sports' || category_name === 'Girls Sports' || type === 'sports_girls' || type === 'girls_sports') {
+      dbType = 'sports';
+      dbGender = 'girls';
+    } else if (type === 'cultural') {
+      dbType = 'cultural';
+    }
+
+    const normStartTime = start_time !== undefined ? normalizeTimeForDb(start_time) : undefined;
+    const normEndTime = end_time !== undefined ? normalizeTimeForDb(end_time) : undefined;
     const rulesJson = rules !== undefined ? (typeof rules === 'string' ? rules : JSON.stringify(rules)) : undefined;
 
     if (process.env.DATABASE_URL) {
-      try {
-        const pgRes = await query(`
-          UPDATE events SET
-            name = COALESCE($1, name),
-            category_name = COALESCE($2, category_name),
-            type = COALESCE($3, type),
-            tagline = COALESCE($4, tagline),
-            short_description = COALESCE($5, short_description),
-            description = COALESCE($6, description),
-            rules = COALESCE($7, rules),
-            venue = COALESCE($8, venue),
-            schedule_date = COALESCE($9, schedule_date),
-            start_time = COALESCE($10, start_time),
-            end_time = COALESCE($11, end_time),
-            registration_type = COALESCE($12, registration_type),
-            min_team_size = COALESCE($13, min_team_size),
-            max_team_size = COALESCE($14, max_team_size),
-            team_size_label = COALESCE($15, team_size_label),
-            gender = COALESCE($16, gender),
-            is_registration_open = COALESCE($17, is_registration_open),
-            registration_deadline = COALESCE($18, registration_deadline),
-            requires_audio = COALESCE($19, requires_audio),
-            is_active = COALESCE($20, is_active),
-            updated_at = NOW()
-          WHERE id::text = $21 OR slug = $21
-          RETURNING *
-        `, [
-          name, category_name, type, tagline, short_description, description,
-          rulesJson, venue, schedule_date, start_time, end_time, registration_type,
-          min_team_size !== undefined ? Number(min_team_size) : null,
-          max_team_size !== undefined ? Number(max_team_size) : null,
-          team_size_label, gender,
-          is_registration_open !== undefined ? Boolean(is_registration_open) : null,
-          registration_deadline,
-          requires_audio !== undefined ? Boolean(requires_audio) : null,
-          is_active !== undefined ? Boolean(is_active) : null,
-          req.params.id
-        ]);
+      const pgRes = await query(`
+        UPDATE events SET
+          name = COALESCE($1, name),
+          category_name = COALESCE($2, category_name),
+          category_id = COALESCE($3, category_id),
+          type = COALESCE($4, type),
+          tagline = COALESCE($5, tagline),
+          short_description = COALESCE($6, short_description),
+          description = COALESCE($7, description),
+          rules = COALESCE($8, rules),
+          venue = COALESCE($9, venue),
+          schedule_date = COALESCE($10, schedule_date),
+          start_time = COALESCE($11, start_time),
+          end_time = COALESCE($12, end_time),
+          registration_type = COALESCE($13, registration_type),
+          min_team_size = COALESCE($14, min_team_size),
+          max_team_size = COALESCE($15, max_team_size),
+          team_size_label = COALESCE($16, team_size_label),
+          gender = COALESCE($17, gender),
+          is_registration_open = COALESCE($18, is_registration_open),
+          registration_deadline = COALESCE($19, registration_deadline),
+          requires_audio = COALESCE($20, requires_audio),
+          is_active = COALESCE($21, is_active),
+          updated_at = NOW()
+        WHERE id::text = $22 OR slug = $22
+        RETURNING *
+      `, [
+        name,
+        catInfo ? catInfo.name : category_name,
+        catInfo ? catInfo.id : null,
+        dbType, tagline, short_description, description,
+        rulesJson, venue, schedule_date, normStartTime, normEndTime, registration_type,
+        min_team_size !== undefined ? Number(min_team_size) : null,
+        max_team_size !== undefined ? Number(max_team_size) : null,
+        team_size_label, dbGender,
+        is_registration_open !== undefined ? Boolean(is_registration_open) : null,
+        registration_deadline,
+        requires_audio !== undefined ? Boolean(requires_audio) : null,
+        is_active !== undefined ? Boolean(is_active) : null,
+        req.params.id
+      ]);
 
-        if (pgRes.rows.length) {
-          const ev = pgRes.rows[0];
-          ev.rules = parseRules(ev.rules);
-          res.json({ event: ev, message: 'Event updated successfully' });
-          return;
+      if (pgRes.rows.length) {
+        const ev = pgRes.rows[0];
+        ev.rules = parseRules(ev.rules);
+
+        // Mirror update to SQLite for local cache
+        const db = getSqlite();
+        if (db) {
+          try {
+            db.prepare(`
+              UPDATE events SET
+                name = COALESCE(?, name),
+                category_name = COALESCE(?, category_name),
+                type = COALESCE(?, type),
+                tagline = COALESCE(?, tagline),
+                short_description = COALESCE(?, short_description),
+                description = COALESCE(?, description),
+                rules = COALESCE(?, rules),
+                venue = COALESCE(?, venue),
+                schedule_date = COALESCE(?, schedule_date),
+                start_time = COALESCE(?, start_time),
+                end_time = COALESCE(?, end_time),
+                registration_type = COALESCE(?, registration_type),
+                min_team_size = COALESCE(?, min_team_size),
+                max_team_size = COALESCE(?, max_team_size),
+                team_size_label = COALESCE(?, team_size_label),
+                gender = COALESCE(?, gender),
+                is_registration_open = COALESCE(?, is_registration_open),
+                registration_deadline = COALESCE(?, registration_deadline),
+                requires_audio = COALESCE(?, requires_audio),
+                is_active = COALESCE(?, is_active)
+              WHERE id = ? OR slug = ?
+            `).run(
+              ev.name, ev.category_name, ev.type, ev.tagline,
+              ev.short_description, ev.description, JSON.stringify(ev.rules), ev.venue, ev.schedule_date,
+              ev.start_time, ev.end_time, ev.registration_type, ev.min_team_size,
+              ev.max_team_size, ev.team_size_label, ev.gender, ev.is_registration_open ? 1 : 0,
+              ev.registration_deadline, ev.requires_audio ? 1 : 0, ev.is_active ? 1 : 0,
+              req.params.id, req.params.id
+            );
+          } catch (sqliteErr) {
+            console.warn('SQLite mirror update warning:', sqliteErr);
+          }
         }
-      } catch (err) {
-        console.warn('Postgres update event error:', err);
+
+        res.json({ event: ev, message: 'Event updated successfully' });
+        return;
       }
     }
 
@@ -524,7 +677,7 @@ router.patch('/events/:id', async (req: AuthRequest, res: Response): Promise<voi
         type ?? existing.type, tagline !== undefined ? tagline : existing.tagline,
         short_description ?? existing.short_description, description ?? existing.description,
         rulesJson ?? existing.rules, venue ?? existing.venue, schedule_date ?? existing.schedule_date,
-        start_time ?? existing.start_time, end_time ?? existing.end_time,
+        normStartTime ?? existing.start_time, normEndTime ?? existing.end_time,
         registration_type ?? existing.registration_type,
         min_team_size !== undefined ? Number(min_team_size) : existing.min_team_size,
         max_team_size !== undefined ? Number(max_team_size) : existing.max_team_size,
@@ -544,9 +697,9 @@ router.patch('/events/:id', async (req: AuthRequest, res: Response): Promise<voi
     }
 
     res.status(404).json({ error: 'Event not found' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Admin update event error:', error);
-    res.status(500).json({ error: 'Failed to update event' });
+    res.status(500).json({ error: error?.message || 'Failed to update event' });
   }
 });
 

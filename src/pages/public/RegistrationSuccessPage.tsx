@@ -365,7 +365,7 @@ const RegistrationSuccessPage: React.FC = () => {
             className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center space-x-2 transition-all shadow-lg shadow-purple-600/25 cursor-pointer"
           >
             <Download className="w-4 h-4" />
-            <span>Download PDF</span>
+            <span>Download E-Pass</span>
           </button>
           <button
             onClick={handleShare}

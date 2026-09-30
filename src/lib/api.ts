@@ -1,6 +1,17 @@
 import axios from 'axios';
 
-const envBase = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3001';
+const getApiBase = (): string => {
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    const envUrl = (import.meta.env.VITE_API_URL as string) || '';
+    if (envUrl && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
+      return envUrl;
+    }
+    return 'http://localhost:3001';
+  }
+  return (import.meta.env.VITE_API_URL as string) || 'http://localhost:3001';
+};
+
+const envBase = getApiBase();
 export const API_ORIGIN = envBase.replace(/\/api\/?$/, '').replace(/\/+$/, '');
 const API_BASE = envBase.endsWith('/api') ? envBase : `${envBase.replace(/\/+$/, '')}/api`;
 
