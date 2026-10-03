@@ -3,6 +3,7 @@ import {
   MapPin, ShieldCheck, ChevronDown, ChevronUp,
   Ticket, ArrowRight, ChevronLeft, ChevronRight, Users,
 } from 'lucide-react';
+import { formatParticipantCount } from '../../utils/formatParticipantCount';
 
 interface SportsEventScenesProps {
   events: any[]; // API-shaped events
@@ -101,8 +102,9 @@ export const SportsEventScenes: React.FC<SportsEventScenesProps> = ({
     } catch { return t; }
   };
 
-  const teamLabel = activeEvent.team_size_label ||
-    (activeEvent.min_team_size && activeEvent.max_team_size
+  const teamLabel = activeEvent.team_size_label
+    ? formatParticipantCount(activeEvent.team_size_label, undefined, 'Players')
+    : (activeEvent.min_team_size && activeEvent.max_team_size
       ? activeEvent.min_team_size === activeEvent.max_team_size
         ? `${activeEvent.min_team_size} Player${activeEvent.min_team_size > 1 ? 's' : ''}`
         : `${activeEvent.min_team_size} – ${activeEvent.max_team_size} Players`

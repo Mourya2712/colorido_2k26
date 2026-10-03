@@ -198,6 +198,14 @@ try { sqlite.exec("ALTER TABLE schedule_items ADD COLUMN is_active INTEGER DEFAU
 try { sqlite.exec("ALTER TABLE schedule_items ADD COLUMN created_at TEXT"); } catch {}
 try { sqlite.exec("ALTER TABLE events ADD COLUMN end_date TEXT DEFAULT '2026-10-08'"); } catch {}
 try { sqlite.exec("UPDATE events SET end_date = '2026-10-08' WHERE end_date IS NULL OR end_date = ''"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN category TEXT DEFAULT 'associate'"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN website TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN org_name TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN phone TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN amount TEXT"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN display_order INTEGER DEFAULT 0"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN is_active INTEGER DEFAULT 1"); } catch {}
+try { sqlite.exec("ALTER TABLE sponsors ADD COLUMN updated_at TEXT"); } catch {}
 
 // Purge invalid 4th sports events (strictly 3 per gender)
 try {

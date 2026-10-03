@@ -51,22 +51,39 @@ const AdminRegistrationDetail: React.FC = () => {
   const handleUpdateStatus = async (newStatus: string) => {
     if (!id) return;
     try {
-      await updateRegistrationStatus(id, newStatus, notes);
-      if (data) setData({ ...data, status: newStatus, notes });
+      const res = await updateRegistrationStatus(id, newStatus, notes);
+      if (res.data?.registration) {
+        setData((prev) => ({
+          ...(prev || {}),
+          ...res.data.registration,
+          status: newStatus,
+          notes: notes !== undefined ? notes : (res.data.registration.notes || (prev ? prev.notes : '')),
+        }));
+      } else if (data) {
+        setData({ ...data, status: newStatus, notes });
+      }
       toast.success(`Registration status updated to ${newStatus}`);
-    } catch {
-      toast.error('Failed to update status on server');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to update status on server');
     }
   };
 
   const handleSaveNotes = async () => {
     if (!id || !data) return;
     try {
-      await updateRegistrationStatus(id, data.status, notes);
-      setData({ ...data, notes });
+      const res = await updateRegistrationStatus(id, data.status, notes);
+      if (res.data?.registration) {
+        setData((prev) => ({
+          ...(prev || {}),
+          ...res.data.registration,
+          notes,
+        }));
+      } else {
+        setData({ ...data, notes });
+      }
       toast.success('Organizer internal notes saved.');
-    } catch {
-      toast.error('Failed to save notes on server');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to save notes on server');
     }
   };
 

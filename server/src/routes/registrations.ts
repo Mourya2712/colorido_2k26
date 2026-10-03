@@ -116,22 +116,53 @@ router.post(
         console.warn('Error fetching event row in registration:', evErr);
       }
 
-      if (eventRow) {
-        resolvedEventId = eventRow.slug || String(eventRow.id);
-        resolvedEventName = eventRow.name;
-        resolvedEventType = eventRow.type;
-        if (eventRow.is_registration_open === false || eventRow.is_registration_open === 0) {
-          res.status(400).json({ error: 'Registrations for this event are currently closed by the organizers.' });
-          return;
-        }
-        if (eventRow.registration_deadline) {
-          const deadlineTime = new Date(eventRow.registration_deadline).getTime();
-          if (!isNaN(deadlineTime) && deadlineTime < Date.now()) {
-            res.status(400).json({ error: 'Registration deadline has passed. Registrations for this event are closed.' });
-            return;
+      if (!eventRow) {
+        try {
+          const db = getSqlite();
+          if (db) {
+            eventRow = db.prepare('SELECT * FROM events WHERE id = ? OR slug = ?').get(event_id, event_id);
+            if (!eventRow && (event_type === 'sports_boys' || event_type === 'boys_sports' || event_type === 'boys')) {
+              eventRow = db.prepare('SELECT * FROM events WHERE id = ? OR slug = ?').get(`${event_id}-boys`, `${event_id}-boys`);
+            } else if (!eventRow && (event_type === 'sports_girls' || event_type === 'girls_sports' || event_type === 'girls')) {
+              eventRow = db.prepare('SELECT * FROM events WHERE id = ? OR slug = ?').get(`${event_id}-girls`, `${event_id}-girls`);
+            }
           }
+        } catch (sqliteErr) {
+          console.warn('Error fetching event row in sqlite:', sqliteErr);
         }
       }
+
+      // Backend event ID validation: event must exist in database
+      if (!eventRow) {
+        res.status(400).json({ error: 'Invalid event ID. The specified event does not exist.' });
+        return;
+      }
+
+      // Validate event active state
+      if (eventRow.is_active === false || eventRow.is_active === 0) {
+        res.status(400).json({ error: 'This event is currently inactive and cannot accept registrations.' });
+        return;
+      }
+
+      // Validate event registration open state
+      if (eventRow.is_registration_open === false || eventRow.is_registration_open === 0) {
+        res.status(400).json({ error: 'Registrations for this event are currently closed by the organizers.' });
+        return;
+      }
+
+      // Validate event registration deadline
+      if (eventRow.registration_deadline) {
+        const deadlineTime = new Date(eventRow.registration_deadline).getTime();
+        if (!isNaN(deadlineTime) && deadlineTime < Date.now()) {
+          res.status(400).json({ error: 'Registration deadline has passed. Registrations for this event are closed.' });
+          return;
+        }
+      }
+
+      // Always lock to verified database record
+      resolvedEventId = eventRow.slug || String(eventRow.id);
+      resolvedEventName = eventRow.name;
+      resolvedEventType = eventRow.type;
 
       if (resolvedEventType === 'boys_sports') resolvedEventType = 'sports_boys';
       if (resolvedEventType === 'girls_sports') resolvedEventType = 'sports_girls';

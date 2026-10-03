@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { SectionId } from '../../types';
 import { festivalConfig } from '../../data/festivalData';
+import { getPublicConfig } from '../../lib/api';
 import { Sparkles, Trophy, ArrowRight, Calendar, MapPin, ShieldCheck } from 'lucide-react';
 
 interface HomeHeroProps {
@@ -12,6 +13,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({ onNavigate, onOpenRegister }
   // Parallax mouse position
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [festivalDates, setFestivalDates] = useState<string>(festivalConfig.dates);
 
   useEffect(() => {
     // Stage 1 -> Stage 6 opening animation sequence trigger
@@ -19,6 +21,22 @@ export const HomeHero: React.FC<HomeHeroProps> = ({ onNavigate, onOpenRegister }
       setIsLoaded(true);
     }, 150);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    // Fetch dynamic event date from admin config
+    getPublicConfig()
+      .then((res) => {
+        const d = res.data?.festival_dates;
+        if (d && d !== '[OFFICIAL DATE TO BE UPDATED]') {
+          setFestivalDates(d);
+        } else if (d === '[OFFICIAL DATE TO BE UPDATED]') {
+          setFestivalDates('[OFFICIAL DATE TO BE UPDATED]');
+        }
+      })
+      .catch(() => {
+        // Keep fallback from festivalConfig
+      });
   }, []);
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -141,7 +159,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({ onNavigate, onOpenRegister }
         >
           <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-black/60 border border-white/15 text-xs sm:text-sm text-slate-300 backdrop-blur-md">
             <Calendar className="w-4 h-4 text-purple-400" />
-            <span className="font-semibold">{festivalConfig.dates}</span>
+            <span className="font-semibold">{festivalDates}</span>
           </div>
 
           <div className="flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/40 text-xs sm:text-sm text-emerald-300 backdrop-blur-md shadow-sm">
@@ -183,7 +201,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({ onNavigate, onOpenRegister }
             <div className="relative z-10">
               <div className="flex items-center space-x-2">
                 <h3 className="text-2xl sm:text-3xl font-black text-white tracking-wide uppercase font-['Outfit'] group-hover:text-purple-200 transition-colors">
-                  ENTER CULTURAL
+                  Cultural Events
                 </h3>
                 <ArrowRight className="w-6 h-6 text-purple-400 group-hover:translate-x-2 transition-transform" />
               </div>
@@ -213,7 +231,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({ onNavigate, onOpenRegister }
             <div className="relative z-10">
               <div className="flex items-center space-x-2">
                 <h3 className="text-2xl sm:text-3xl font-black text-white tracking-wide uppercase font-['Outfit'] group-hover:text-orange-200 transition-colors">
-                  ENTER SPORTS
+                  Sports Events
                 </h3>
                 <ArrowRight className="w-6 h-6 text-orange-400 group-hover:translate-x-2 transition-transform" />
               </div>

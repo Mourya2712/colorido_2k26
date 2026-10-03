@@ -41,6 +41,9 @@ router.get('/dashboard', async (_req: AuthRequest, res: Response): Promise<void>
           LIMIT 10
         `);
 
+        const dateRes = await query(`SELECT value FROM site_config WHERE key = 'festival_dates'`);
+        const festivalDates = dateRes.rows[0]?.value || '[OFFICIAL DATE TO BE UPDATED]';
+
         res.json({
           stats: {
             total_registrations: total,
@@ -61,6 +64,7 @@ router.get('/dashboard', async (_req: AuthRequest, res: Response): Promise<void>
             confirmedCount: confirmed,
             total_events: totalEvents,
           },
+          festival_dates: festivalDates,
           recentRegistrations: recentRes.rows.map((r: any) => ({
             ...r,
             team_members: tryParseJson(r.team_members),
@@ -92,6 +96,12 @@ router.get('/dashboard', async (_req: AuthRequest, res: Response): Promise<void>
       LIMIT 10
     `).all() as any[];
 
+    let festivalDates = '[OFFICIAL DATE TO BE UPDATED]';
+    try {
+      const r = db.prepare(`SELECT value FROM site_config WHERE key = 'festival_dates'`).get() as any;
+      if (r?.value) festivalDates = r.value;
+    } catch {}
+
     res.json({
       stats: {
         total_registrations: total,
@@ -112,6 +122,7 @@ router.get('/dashboard', async (_req: AuthRequest, res: Response): Promise<void>
         confirmedCount: confirmed,
         total_events: totalEvents,
       },
+      festival_dates: festivalDates,
       recentRegistrations: recentRows.map((r: any) => ({
         ...r,
         team_members: tryParseJson(r.team_members),
@@ -261,30 +272,82 @@ router.get('/registrations/:id', async (req: AuthRequest, res: Response): Promis
 // PATCH update registration status
 router.patch('/registrations/:id/status', async (req: AuthRequest, res: Response): Promise<void> => {
   const { status, notes } = req.body;
-  const validStatuses = ['pending', 'confirmed', 'rejected', 'cancelled'];
-  if (!validStatuses.includes(status)) { res.status(400).json({ error: 'Invalid status' }); return; }
+  const validStatuses = ['pending', 'confirmed', 'checked_in', 'rejected', 'cancelled'];
+  if (!validStatuses.includes(status)) {
+    res.status(400).json({ error: 'Invalid status. Must be pending, confirmed, checked_in, rejected, or cancelled' });
+    return;
+  }
+
+  const hasNotes = notes !== undefined;
 
   try {
     if (process.env.DATABASE_URL) {
       try {
-        await query(
-          'UPDATE registrations SET status = $1, notes = COALESCE($2, notes) WHERE id = $3 OR registration_number = $3',
-          [status, notes || null, req.params.id]
-        );
+        const updateSql = hasNotes
+          ? 'UPDATE registrations SET status = $1, notes = $2 WHERE id = $3 OR registration_number = $3'
+          : 'UPDATE registrations SET status = $1 WHERE id = $2 OR registration_number = $2';
+        const updateParams = hasNotes ? [status, notes, req.params.id] : [status, req.params.id];
+
+        const updateResult = await query(updateSql, updateParams);
+
+        if ((updateResult.rowCount ?? 0) > 0) {
+          const fetchSql = `
+            SELECT r.*, e.category_name as category, e.venue as venue, e.schedule_date as event_date, e.start_time as event_start_time, e.end_time as event_end_time
+            FROM registrations r
+            LEFT JOIN events e ON (e.id::text = r.event_id OR e.slug = r.event_id)
+            WHERE r.id = $1 OR r.registration_number = $1
+          `;
+          const resPg = await query(fetchSql, [req.params.id]);
+          if (resPg.rows.length > 0) {
+            const updated = resPg.rows[0];
+            updated.team_members = tryParseJson(updated.team_members);
+
+            // Also keep SQLite in sync if SQLite is available
+            try {
+              const db = getSqlite();
+              if (hasNotes) {
+                db.prepare('UPDATE registrations SET status = ?, notes = ? WHERE id = ? OR registration_number = ?')
+                  .run(status, notes, req.params.id, req.params.id);
+              } else {
+                db.prepare('UPDATE registrations SET status = ? WHERE id = ? OR registration_number = ?')
+                  .run(status, req.params.id, req.params.id);
+              }
+            } catch {
+              // Ignore SQLite sync error when Postgres succeeded
+            }
+
+            res.json({ success: true, registration: updated });
+            return;
+          }
+        }
       } catch (err) {
-        console.warn('Postgres status update error:', err);
+        console.warn('Postgres status update error, falling back to sqlite:', err);
       }
     }
 
     const db = getSqlite();
-    db.prepare('UPDATE registrations SET status = ?, notes = COALESCE(?, notes) WHERE id = ? OR registration_number = ?')
-      .run(status, notes || null, req.params.id, req.params.id);
-    const updated = db.prepare('SELECT * FROM registrations WHERE id = ? OR registration_number = ?')
-      .get(req.params.id, req.params.id) as any;
-    if (!updated) { res.status(404).json({ error: 'Not found' }); return; }
+    if (hasNotes) {
+      db.prepare('UPDATE registrations SET status = ?, notes = ? WHERE id = ? OR registration_number = ?')
+        .run(status, notes, req.params.id, req.params.id);
+    } else {
+      db.prepare('UPDATE registrations SET status = ? WHERE id = ? OR registration_number = ?')
+        .run(status, req.params.id, req.params.id);
+    }
+    const updated = db.prepare(`
+      SELECT r.*, e.category_name as category, e.venue as venue, e.schedule_date as event_date, e.start_time as event_start_time, e.end_time as event_end_time
+      FROM registrations r
+      LEFT JOIN events e ON (e.id = r.event_id OR e.slug = r.event_id)
+      WHERE r.id = ? OR r.registration_number = ?
+    `).get(req.params.id, req.params.id) as any;
+
+    if (!updated) {
+      res.status(404).json({ error: 'Registration not found' });
+      return;
+    }
     updated.team_members = tryParseJson(updated.team_members);
     res.json({ success: true, registration: updated });
   } catch (error) {
+    console.error('Failed to update registration status:', error);
     res.status(500).json({ error: 'Failed to update registration' });
   }
 });
@@ -728,44 +791,84 @@ router.delete('/events/:id', async (req: AuthRequest, res: Response): Promise<vo
 router.get('/announcements', async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const result = await query('SELECT * FROM announcements ORDER BY created_at DESC', []);
-    res.json({ announcements: result.rows });
+    // Derive is_urgent from priority for frontend compatibility
+    const announcements = result.rows.map((row: any) => ({
+      ...row,
+      is_urgent: row.priority === 'urgent' || Boolean(row.is_urgent),
+    }));
+    res.json({ announcements });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch announcements' });
   }
 });
 
+
 router.post('/announcements', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { title, content, category = 'General', is_urgent = false, is_ticker = true, link_url } = req.body;
+  const { title, content, category = 'general', is_urgent = false, is_ticker = false, priority } = req.body;
   if (!title || !content) { res.status(400).json({ error: 'title and content are required' }); return; }
+  // Normalize category to PG-allowed enum values
+  const pgCategoryMap: Record<string, string> = {
+    'cultural': 'cultural', 'sports': 'sports', 'general': 'general',
+    'registration': 'registration', 'schedule': 'schedule', 'result': 'result',
+    'urgent': 'general', 'prizes': 'general',
+  };
+  const pgCategory = pgCategoryMap[(category || '').toLowerCase()] || 'general';
+  // Map is_urgent → priority
+  const pgPriority = priority || (is_urgent ? 'urgent' : 'normal');
+  const pgPriorityMap: Record<string, string> = { 'low': 'low', 'normal': 'normal', 'high': 'high', 'urgent': 'urgent' };
+  const finalPriority = pgPriorityMap[pgPriority] || 'normal';
   try {
     const result = await query(
-      'INSERT INTO announcements (title, content, category, is_urgent, is_ticker, link_url, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [title, content, category, is_urgent, is_ticker, link_url || null, new Date().toISOString()]
+      'INSERT INTO announcements (title, content, category, priority, is_published, is_ticker, published_at) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [title, content, pgCategory, finalPriority, true, Boolean(is_ticker), new Date().toISOString()]
     );
-    res.status(201).json({ announcement: result.rows[0] });
+    // Return result with is_urgent derived from priority for frontend compatibility
+    const ann = result.rows[0];
+    res.status(201).json({ announcement: { ...ann, is_urgent: ann?.priority === 'urgent' } });
   } catch (error) {
+    console.error('Create announcement error:', error);
     res.status(500).json({ error: 'Failed to create announcement' });
   }
 });
 
 router.patch('/announcements/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const db = getSqlite();
-    const { title, content, category, is_urgent, is_ticker, link_url } = req.body;
-    const existing = db.prepare('SELECT * FROM announcements WHERE id = ?').get(req.params.id) as any;
+    const { title, content, category, is_urgent, is_ticker, priority } = req.body;
+    // Fetch existing from PG
+    const existingRes = await query('SELECT * FROM announcements WHERE id = $1', [req.params.id]);
+    const existing = existingRes.rows[0];
     if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
-    db.prepare(
-      'UPDATE announcements SET title = ?, content = ?, category = ?, is_urgent = ?, is_ticker = ?, link_url = ? WHERE id = ?'
-    ).run(
-      title ?? existing.title, content ?? existing.content, category ?? existing.category,
-      is_urgent !== undefined ? (is_urgent ? 1 : 0) : existing.is_urgent,
-      is_ticker !== undefined ? (is_ticker ? 1 : 0) : existing.is_ticker,
-      link_url !== undefined ? link_url : existing.link_url,
-      req.params.id
+    // Normalize category
+    const pgCategoryMap: Record<string, string> = {
+      'cultural': 'cultural', 'sports': 'sports', 'general': 'general',
+      'registration': 'registration', 'schedule': 'schedule', 'result': 'result',
+      'urgent': 'general', 'prizes': 'general',
+    };
+    const rawCat = (category ?? existing.category ?? 'general').toLowerCase();
+    const pgCategory = pgCategoryMap[rawCat] || 'general';
+    // Map is_urgent to priority
+    let finalPriority = existing.priority;
+    if (priority !== undefined) {
+      const pgPriorityMap: Record<string, string> = { 'low': 'low', 'normal': 'normal', 'high': 'high', 'urgent': 'urgent' };
+      finalPriority = pgPriorityMap[priority] || 'normal';
+    } else if (is_urgent !== undefined) {
+      finalPriority = is_urgent ? 'urgent' : 'normal';
+    }
+    const updateRes = await query(
+      'UPDATE announcements SET title = $1, content = $2, category = $3, priority = $4, is_ticker = $5, updated_at = NOW() WHERE id = $6 RETURNING *',
+      [
+        title ?? existing.title,
+        content ?? existing.content,
+        pgCategory,
+        finalPriority,
+        is_ticker !== undefined ? Boolean(is_ticker) : existing.is_ticker,
+        req.params.id,
+      ]
     );
-    const updated = db.prepare('SELECT * FROM announcements WHERE id = ?').get(req.params.id);
-    res.json({ announcement: updated });
+    const updated = updateRes.rows[0];
+    res.json({ announcement: { ...updated, is_urgent: updated?.priority === 'urgent' } });
   } catch (error) {
+    console.error('Update announcement error:', error);
     res.status(500).json({ error: 'Failed to update announcement' });
   }
 });
@@ -1057,29 +1160,41 @@ router.get('/sponsors', async (_req: AuthRequest, res: Response): Promise<void> 
 });
 
 router.post('/sponsors', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { name, logo_url, website_url, tier = 'associate', description } = req.body;
+  const { name, org_name, logo_url, website, category = 'associate', description, phone, amount } = req.body;
   if (!name) { res.status(400).json({ error: 'name required' }); return; }
   try {
     const result = await query(
-      'INSERT INTO sponsors (name, logo_url, website_url, tier, description) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [name, logo_url || null, website_url || null, tier, description || null]
+      'INSERT INTO sponsors (name, org_name, logo_url, website, category, description, phone, amount, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING *',
+      [name, org_name || null, logo_url || null, website || null, category, description || null, phone || null, amount || null]
     );
     res.status(201).json({ sponsor: result.rows[0] });
   } catch (error) {
+    console.error('Failed to add sponsor:', error);
     res.status(500).json({ error: 'Failed to add sponsor' });
   }
 });
 
 router.patch('/sponsors/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const db = getSqlite();
-    const existing = db.prepare('SELECT * FROM sponsors WHERE id = ?').get(req.params.id) as any;
-    if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
-    const { name, logo_url, website_url, tier, description } = req.body;
-    db.prepare('UPDATE sponsors SET name = ?, logo_url = ?, website_url = ?, tier = ?, description = ? WHERE id = ?')
-      .run(name ?? existing.name, logo_url ?? existing.logo_url, website_url ?? existing.website_url, tier ?? existing.tier, description ?? existing.description, req.params.id);
-    const updated = db.prepare('SELECT * FROM sponsors WHERE id = ?').get(req.params.id);
-    res.json({ sponsor: updated });
+    const existing = await query('SELECT * FROM sponsors WHERE id = $1', [req.params.id]);
+    if (!existing.rows[0]) { res.status(404).json({ error: 'Not found' }); return; }
+    const ex = existing.rows[0];
+    const { name, org_name, logo_url, website, category, description, phone, amount } = req.body;
+    const result = await query(
+      'UPDATE sponsors SET name = $1, org_name = $2, logo_url = $3, website = $4, category = $5, description = $6, phone = $7, amount = $8, updated_at = NOW() WHERE id = $9 RETURNING *',
+      [
+        name ?? ex.name,
+        org_name !== undefined ? org_name : ex.org_name,
+        logo_url !== undefined ? logo_url : ex.logo_url,
+        website !== undefined ? website : ex.website,
+        category ?? ex.category,
+        description !== undefined ? description : ex.description,
+        phone !== undefined ? phone : ex.phone,
+        amount !== undefined ? amount : ex.amount,
+        req.params.id,
+      ]
+    );
+    res.json({ sponsor: result.rows[0] });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update sponsor' });
   }
@@ -1099,9 +1214,41 @@ router.get('/contact', async (_req: AuthRequest, res: Response): Promise<void> =
   res.json({ contact: { email: 'colorido2k26@rvrjc.edu', phone: '+91 86322 88254', address: 'RVR & JC College of Engineering, Chandramoulipuram, Chowdavaram, Guntur - 522019, Andhra Pradesh' } });
 });
 
-// ── Site Config (fallback) ────────────────────────────────────────
+// ── Site Config ───────────────────────────────────────────────────
 router.get('/config', async (_req: AuthRequest, res: Response): Promise<void> => {
-  res.json({ config: [] });
+  try {
+    const result = await query('SELECT key, value, description, updated_at FROM site_config ORDER BY key ASC');
+    const config: Record<string, string> = {};
+    result.rows.forEach((r) => { config[r.key] = r.value; });
+    res.json({
+      config,
+      rows: result.rows,
+      festival_dates: config['festival_dates'] || '[OFFICIAL DATE TO BE UPDATED]',
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch site config' });
+  }
+});
+
+router.patch('/config/:key', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+    if (value === undefined) {
+      res.status(400).json({ error: 'Value is required' });
+      return;
+    }
+    const cleanValue = String(value).trim();
+    await query(`
+      INSERT INTO site_config (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `, [key, cleanValue]);
+
+    res.json({ success: true, key, value: cleanValue });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update site config' });
+  }
 });
 
 function tryParseJson(val: any): any {

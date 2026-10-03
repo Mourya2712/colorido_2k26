@@ -13,54 +13,6 @@ interface Announcement {
   created_at: string;
 }
 
-const FALLBACK_ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: '1',
-    title: 'Final Registration Deadline Extended!',
-    content: 'Due to overwhelming demand from colleges across Andhra Pradesh and Telangana, online registration for all Cultural and Sports competitions is extended until February 20, 2026. Spot registrations will be limited.',
-    category: 'Urgent',
-    is_urgent: true,
-    link_url: '/register',
-    created_at: '2026-02-15T10:00:00Z',
-  },
-  {
-    id: '2',
-    title: 'Celebrity Night & Chief Guests Announced',
-    content: 'Get ready for an electrifying musical night on Day 2 at the RVR & JC Open Air Theatre! Renowned playback singers and DJ artists are lined up for the grand finale.',
-    category: 'Cultural',
-    is_urgent: false,
-    link_url: '/schedule',
-    created_at: '2026-02-14T14:30:00Z',
-  },
-  {
-    id: '3',
-    title: 'Cricket & Basketball Fixture Draw Scheduled',
-    content: 'Team captains of all registered inter-collegiate sports teams must join the virtual fixtures briefing on February 22 at 5:00 PM. Match schedules will be posted here.',
-    category: 'Sports',
-    is_urgent: true,
-    link_url: '/schedule',
-    created_at: '2026-02-13T09:15:00Z',
-  },
-  {
-    id: '4',
-    title: 'Free Campus Transport & Accommodation Desk',
-    content: 'Outstation participant teams traveling from outside Guntur/Vijayawada can request complimentary campus hostel accommodation and railway station pick-up through the desk.',
-    category: 'General',
-    is_urgent: false,
-    link_url: '/contact',
-    created_at: '2026-02-12T16:00:00Z',
-  },
-  {
-    id: '5',
-    title: 'Cash Prize Pool Increased to ₹3,50,000!',
-    content: 'Management of R.V.R. & J.C. College of Engineering has enhanced the grand championship trophy cash award and individual cultural contest prizes.',
-    category: 'Prizes',
-    is_urgent: false,
-    link_url: '/cultural',
-    created_at: '2026-02-10T11:20:00Z',
-  },
-];
-
 const AnnouncementsPage: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -70,19 +22,15 @@ const AnnouncementsPage: React.FC = () => {
   useEffect(() => {
     getAnnouncements()
       .then((res) => {
-        if (res.data?.announcements && res.data.announcements.length > 0) {
-          setAnnouncements(res.data.announcements);
-        } else {
-          setAnnouncements(FALLBACK_ANNOUNCEMENTS);
-        }
+        setAnnouncements(res.data?.announcements || []);
       })
       .catch(() => {
-        setAnnouncements(FALLBACK_ANNOUNCEMENTS);
+        setAnnouncements([]);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  const categories = ['all', 'Urgent', 'Cultural', 'Sports', 'General', 'Prizes'];
+  const categories = ['all', 'Urgent', 'Cultural', 'Sports', 'Registration', 'General', 'Prizes'];
 
   const filteredAnnouncements = announcements.filter((item) => {
     const matchesCategory =

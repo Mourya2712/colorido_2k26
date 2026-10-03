@@ -1,0 +1,134 @@
+<USER_REQUEST>
+IMPORTANT: THIS IS A TARGETED BUG-FIX TASK ONLY.
+
+Fix ONLY the following 3 production issues in COLORIDO 2K26.
+
+DO NOT:
+- Redesign any UI.
+- Change existing working features.
+- Modify unrelated components.
+- Refactor unrelated code.
+- Delete or recreate existing events.
+- Delete existing registrations.
+- Reset or reseed Supabase.
+- Replace the current database.
+- Change the existing design/layout unless it is directly required to fix one of these 3 issues.
+- Change routes or authentication unless directly required for these fixes.
+
+PRESERVE ALL CURRENT LATEST CODE AND FUNCTIONALITY.
+
+==================================================
+ISSUE 1: REGISTRATION → DUPLICATE REGISTRATION
+==================================================
+
+Problem:
+A NEW valid registration is incorrectly showing "Duplicate registration" instead of completing.
+
+Fix the actual cause.
+
+Check:
+- Backend duplicate-registration logic.
+- Database unique constraints/indexes.
+- Registration event ID handling.
+- Student/participant identification fields.
+- Whether the frontend submits the registration request twice.
+- Whether the first POST succeeds and a second POST incorrectly triggers the duplicate message.
+- Whether the API response is being incorrectly interpreted by the frontend.
+- Whether registrations for different events are incorrectly treated as duplicates.
+
+IMPORTANT:
+DO NOT remove duplicate protection completely.
+
+Only block a registration when it genuinely violates the existing registration rules.
+
+Expected result for a valid NEW registration:
+
+Registration submitted successfully
+        ↓
+Registration saved to Supabase
+        ↓
+Unique E-Pass Number generated
+        ↓
+Success page/result displayed
+        ↓
+Download E-Pass PDF available
+
+Test BOTH:
+- Individual registration
+- Team registration
+
+==================================================
+E-PASS PDF — MUST BE CORRECT
+==================================================
+
+When registration suc
+<truncated 4351 bytes>
+========================
+DEPLOYMENT SAFETY
+==================================================
+
+Do NOT deploy a partially completed fix.
+
+First:
+1. Diagnose.
+2. Fix.
+3. Run build/type checks.
+4. Test all three issues.
+5. Verify E-Pass PDF contents.
+6. Verify existing data remains intact.
+
+ONLY AFTER ALL TESTS PASS:
+- Deploy the final version.
+
+If you reach the Antigravity usage limit before finishing:
+- STOP.
+- Do NOT deploy an incomplete version.
+- Do NOT revert working code.
+- Leave the current successful production deployment untouched.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report ONLY:
+
+1. Registration duplicate issue:
+   - Root cause
+   - Fix
+   - Test result
+
+2. E-Pass PDF:
+   - Confirm submitted details are correctly included
+   - Confirm E-Pass Number is correct
+   - Confirm one-page PDF
+   - Confirm Download only / no Print
+   - Test result
+
+3. Countdown:
+   - Root cause
+   - Fix
+   - Confirm 12-hour AM/PM in Admin
+   - Test result
+
+4. Admin event create/edit:
+   - Root cause
+   - Fix
+   - Test result
+
+5. Confirm no unrelated code/features were changed.
+
+6. Confirm whether deployment was completed.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-30T05:12:27+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\data\festivalData.ts (LANGUAGE_TYPESCRIPT)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\pages\public\RegisterPage.tsx (LANGUAGE_TSX)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\pages\public\ResultsPage.tsx (LANGUAGE_TSX)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\components\common\AnnouncementTicker.tsx (LANGUAGE_TSX)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\src\types\index.ts (LANGUAGE_TYPESCRIPT)
+- c:\Users\MOURYA T\OneDrive\Desktop\Colorido_2k26\index.html (LANGUAGE_HTML)
+</ADDITIONAL_METADATA>

@@ -8,6 +8,7 @@ import {
   Flame, Music, Palette, BookOpen, Drama, Sparkles, ChevronRight,
   Ticket, Users, Cpu, TrendingUp, ArrowRight, ShieldCheck, MapPin, Loader2, Clock
 } from 'lucide-react';
+import { formatParticipantCount } from '../../utils/formatParticipantCount';
 
 interface CulturalSectionProps {
   onRegisterEvent: (event: BaseEvent) => void;
@@ -453,12 +454,14 @@ const ApiEventCard: React.FC<ApiEventCardProps> = ({ event, onRegister }) => {
             </div>
           </div>
 
-          {event.team_size_label && (
+          {(event.team_size_label || (event.registration_type === 'team' && event.min_team_size && event.max_team_size)) && (
             <div className="p-1.5 rounded-lg bg-white/[0.03] border border-white/10 flex items-center space-x-1.5 text-[10px] col-span-2">
               <Users className="w-3 h-3 text-pink-400 shrink-0" />
               <div>
                 <span className="block text-[9px] text-slate-400">Team Size</span>
-                <span className="font-semibold text-slate-200 text-[10px]">{event.team_size_label}</span>
+                <span className="font-semibold text-slate-200 text-[10px]">
+                  {formatParticipantCount(event.team_size_label || event.min_team_size, event.max_team_size)}
+                </span>
               </div>
             </div>
           )}

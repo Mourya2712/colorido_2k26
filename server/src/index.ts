@@ -25,6 +25,7 @@ import contactRouter from './routes/contact';
 import adminRouter from './routes/admin';
 import authRouter from './routes/auth';
 import uploadRouter from './routes/upload';
+import configRouter from './routes/config';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -113,6 +114,7 @@ app.use('/api/gallery', galleryRouter);
 app.use('/api/sponsors', sponsorsRouter);
 app.use('/api/contact', contactRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/config', configRouter);
 
 // ── Auth & Admin Routes ───────────────────────────────────────────
 app.use('/api/auth', authRouter);

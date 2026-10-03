@@ -53,6 +53,7 @@ export const getResults = (params?: Record<string, unknown>) => api.get('/result
 export const getGallery = (params?: Record<string, unknown>) => api.get('/gallery', { params });
 export const getSponsors = () => api.get('/sponsors');
 export const getContact = () => api.get('/contact');
+export const getPublicConfig = () => api.get('/config');
 
 // ── File Upload ───────────────────────────────────────────────────
 export const uploadAudioFile = async (file: File) => {

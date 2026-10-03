@@ -1,7 +1,8 @@
 import React from 'react';
 import type { SectionId } from '../../types';
 import { festivalConfig } from '../../data/festivalData';
-import { Sparkles, Trophy, ShieldCheck, ArrowRight, Layers } from 'lucide-react';
+import { Sparkles, Trophy, ShieldCheck, ArrowRight, Layers, Camera } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface AboutSectionProps {
   onNavigate: (section: SectionId) => void;
@@ -137,6 +138,16 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onNavigate, onOpenRe
                 <span>Explore Sports Arena</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
+
+              <Link
+                to="/gallery"
+                id="about-gallery-btn"
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-pink-600/25 transition-all cursor-pointer"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Gallery</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
 
               <button
                 onClick={onOpenRegister}

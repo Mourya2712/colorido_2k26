@@ -9,6 +9,7 @@ import {
   CheckCircle, Trophy, Sparkles, ChevronDown, Loader2, Clock, Upload, Music, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { formatParticipantCount } from '../../utils/formatParticipantCount';
 
 interface MemberField {
   full_name: string;
@@ -158,111 +159,97 @@ const RegisterPage: React.FC = () => {
 
   const eventPool = liveEvents.length > 0 ? liveEvents : [...allCulturalFallback, ...allBoysFallback, ...allGirlsFallback];
 
-  const culturalList = eventPool.filter((e) =>
-    e.type === 'cultural' || (e.category_id && !e.category_id.includes('sports'))
+  const CULTURAL_CATEGORIES = [
+    'Fine Arts',
+    'Music & Band',
+    'Dance',
+    'Choreoday',
+    'Dramatics',
+    'Fashion Show',
+    'Tekraft Events',
+    'Literary',
+  ];
+
+  // Only events whose type is cultural AND belongs to one of the 8 cultural categories — never show sports here
+  const culturalList = eventPool.filter((e) => {
+    if (e.type !== 'cultural') return false;
+    const cat = (e.category_name || e.category || '').toLowerCase().trim();
+    if (!cat) return true;
+    return CULTURAL_CATEGORIES.some((c) => cat.includes(c.toLowerCase()));
+  });
+
+  // Boys sports: type === 'sports' AND gender === 'boys'
+  const boysList = eventPool.filter(
+    (e) => (e.type === 'sports' || e.type === 'sports_boys' || e.type === 'boys_sports') &&
+           (e.gender === 'boys' || e.gender === 'male' || (e.category_name || e.category || '').toLowerCase().includes('boys'))
   );
 
-  // Requirement 1: Boys Sports games: Volleyball, Basketball, Table Tennis
-  const boysGameKeys = [
-    { key: 'volleyball', name: 'Volleyball', fallbackId: 'volleyball-boys' },
-    { key: 'basketball', name: 'Basketball', fallbackId: 'basketball-boys' },
-    { key: 'table-tennis', name: 'Table Tennis', fallbackId: 'table-tennis-boys' },
-  ];
-  const boysList = boysGameKeys.map(({ key, name, fallbackId }) => {
-    const found = eventPool.find((e) => {
-      const id = (e.id || e.slug || '').toLowerCase();
-      const isBoys = e.type === 'sports_boys' || e.category_id === 'boys-sports' || id.includes('boys');
-      return isBoys && (id.includes(key) || (e.name || '').toLowerCase().includes(key));
-    });
-    if (found) return found;
-    return allBoysFallback.find((e) => e.id === fallbackId || e.slug === fallbackId) || {
-      id: fallbackId,
-      slug: fallbackId,
-      name: `${name} Championship (Boys)`,
-      category: 'Boys Sports',
-      type: 'sports_boys',
-      gender: 'boys',
-      description: `Official Inter-College ${name} Championship for Boys at COLORIDO 2K26.`,
-      venue_name: key === 'table-tennis' ? 'Indoor Sports Complex' : 'Outdoor Sports Courts',
-      min_team_size: key === 'table-tennis' ? 1 : 5,
-      max_team_size: key === 'table-tennis' ? 1 : 12,
-      team_size_label: key === 'table-tennis' ? '1 Player (Solo)' : '6 - 12 Players',
-      is_registration_open: 1,
-      registration_deadline: '2026-10-15T23:59:59.000Z',
-      rules: ['Valid college student ID required.', 'Matches follow standard collegiate federation rules.'],
-    };
-  });
+  // Girls sports: type === 'sports' AND gender === 'girls'
+  const girlsList = eventPool.filter(
+    (e) => (e.type === 'sports' || e.type === 'sports_girls' || e.type === 'girls_sports') &&
+           (e.gender === 'girls' || e.gender === 'female' || (e.category_name || e.category || '').toLowerCase().includes('girls'))
+  );
 
-  // Requirement 1: Girls Sports games: Throwball, Tennikoit, Table Tennis
-  const girlsGameKeys = [
-    { key: 'throwball', name: 'Throwball', fallbackId: 'throwball-girls' },
-    { key: 'tennikoit', name: 'Tennikoit', fallbackId: 'tennikoit-girls' },
-    { key: 'table-tennis', name: 'Table Tennis', fallbackId: 'table-tennis-girls' },
-  ];
-  const girlsList = girlsGameKeys.map(({ key, name, fallbackId }) => {
-    const found = eventPool.find((e) => {
-      const id = (e.id || e.slug || '').toLowerCase();
-      const isGirls = e.type === 'sports_girls' || e.category_id === 'girls-sports' || id.includes('girls');
-      return isGirls && (id.includes(key) || (e.name || '').toLowerCase().includes(key));
-    });
-    if (found) return found;
-    return allGirlsFallback.find((e) => e.id === fallbackId || e.slug === fallbackId) || {
-      id: fallbackId,
-      slug: fallbackId,
-      name: `${name} Tournament (Girls)`,
-      category: 'Girls Sports',
-      type: 'sports_girls',
-      gender: 'girls',
-      description: `Official Inter-College ${name} Championship for Girls at COLORIDO 2K26.`,
-      venue_name: key === 'table-tennis' ? 'Indoor Sports Complex' : 'Girls Sports Arena',
-      min_team_size: key === 'throwball' ? 7 : 1,
-      max_team_size: key === 'throwball' ? 12 : 2,
-      team_size_label: key === 'throwball' ? '7 - 12 Players' : '1 - 2 Players',
-      is_registration_open: 1,
-      registration_deadline: '2026-10-15T23:59:59.000Z',
-      rules: ['Valid college student ID required.', 'Standard tournament rules apply.'],
-    };
-  });
+  // Fallback: if live API has no sports data, use static fallback lists
+  const resolvedBoysList = boysList.length > 0 ? boysList : allBoysFallback;
+  const resolvedGirlsList = girlsList.length > 0 ? girlsList : allGirlsFallback;
 
   const currentList =
     categoryType === 'cultural' ? culturalList
-    : categoryType === 'boysSports' ? boysList
-    : girlsList;
+    : categoryType === 'boysSports' ? resolvedBoysList
+    : resolvedGirlsList;
+
+  // ── Specific-event lock: when navigated from /register/:eventId ──
+  const routeEventKey = eventId || eventSlug;
+  const isSpecificEvent = Boolean(routeEventKey);
+  // Find the locked event from the full pool (not just currentList)
+  const lockedEvent = isSpecificEvent
+    ? eventPool.find((e) => {
+        const target = routeEventKey!.toLowerCase();
+        return (
+          (e.id || '').toLowerCase() === target ||
+          (e.slug || '').toLowerCase() === target
+        );
+      })
+    : undefined;
 
   /* Pre-select from URL slug or eventId */
   useEffect(() => {
-    const target = eventId || eventSlug;
-    if (target && eventPool.length > 0) {
-      const targetLower = target.toLowerCase();
-      const match = eventPool.find((e) => {
-        const idLower = (e.id || '').toLowerCase();
-        const slugLower = (e.slug || '').toLowerCase();
-        return idLower === targetLower || slugLower === targetLower;
-      });
-      if (match) {
-        if (match.type === 'cultural' || (match.category_id && !match.category_id.includes('sports'))) {
-          setCategoryType('cultural');
-        } else if (match.gender === 'girls' || match.type === 'sports_girls' || match.category_id === 'girls-sports') {
-          setCategoryType('girlsSports');
-        } else {
-          setCategoryType('boysSports');
-        }
-        setSelectedEventId(match.id || match.slug);
+    if (!routeEventKey || eventPool.length === 0) return;
+    const targetLower = routeEventKey.toLowerCase();
+    const match = eventPool.find((e) => {
+      return (
+        (e.id || '').toLowerCase() === targetLower ||
+        (e.slug || '').toLowerCase() === targetLower
+      );
+    });
+    if (match) {
+      // Set category type so activeEvent resolves correctly (even if tabs are hidden)
+      if (match.type === 'cultural') {
+        setCategoryType('cultural');
+      } else if (match.gender === 'girls' || match.gender === 'female') {
+        setCategoryType('girlsSports');
+      } else {
+        setCategoryType('boysSports');
       }
+      setSelectedEventId(match.id || match.slug);
     }
-  }, [eventSlug, eventId, eventPool.length]);
+  }, [routeEventKey, eventPool.length]);
 
   /* Auto-select first event when category changes if current not in list */
   useEffect(() => {
+    if (isSpecificEvent) return;
     if (currentList.length > 0) {
       const found = currentList.find((e) => e.id === selectedEventId || e.slug === selectedEventId);
       if (!found) {
         setSelectedEventId(currentList[0].id || currentList[0].slug);
       }
     }
-  }, [categoryType, currentList]);
+  }, [isSpecificEvent, categoryType, currentList, selectedEventId]);
 
-  const activeEvent = currentList.find((e) => e.id === selectedEventId || e.slug === selectedEventId) || currentList[0];
+  const activeEvent = (isSpecificEvent && lockedEvent)
+    ? lockedEvent
+    : (currentList.find((e) => e.id === selectedEventId || e.slug === selectedEventId) || currentList[0]);
 
   /* Safely extract rules as strings so objects never crash React render */
   const parsedRules: string[] = (() => {
@@ -426,10 +413,13 @@ const RegisterPage: React.FC = () => {
       : categoryType === 'girlsSports' ? 'sports_girls'
       : 'cultural';
 
+    const chosenEvent = (isSpecificEvent && lockedEvent) ? lockedEvent : activeEvent;
     const payload = {
-      event_id: activeEvent?.id || selectedEventId,
-      event_name: activeEvent?.name || 'Festival Event',
-      event_type: eventTypeForPayload,
+      event_id: chosenEvent?.id || chosenEvent?.slug || selectedEventId,
+      event_name: chosenEvent?.name || 'Festival Event',
+      event_type: chosenEvent?.type === 'sports'
+        ? (chosenEvent?.gender === 'girls' ? 'sports_girls' : 'sports_boys')
+        : eventTypeForPayload,
       registration_type: isTeamEvent ? 'team' : 'individual',
       participant_name: participantName.trim(),
       email: email.trim().toLowerCase(),
@@ -518,28 +508,30 @@ const RegisterPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Category Selector Tabs */}
-        <div className="flex items-center justify-center space-x-2 mb-8 overflow-x-auto pb-1">
-          {([
-            { id: 'cultural', label: '🎭 Cultural Events', icon: Sparkles },
-            { id: 'boysSports', label: '🔥 Boys Sports', icon: Trophy },
-            { id: 'girlsSports', label: '⚡ Girls Sports', icon: Trophy },
-          ] as const).map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setCategoryType(cat.id)}
-              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap border ${
-                categoryType === cat.id
-                  ? cat.id === 'cultural' ? 'bg-purple-600 text-white border-purple-400/30 shadow-lg shadow-purple-600/30'
-                  : cat.id === 'boysSports' ? 'bg-orange-600 text-white border-orange-400/30 shadow-lg shadow-orange-600/30'
-                  : 'bg-cyan-600 text-white border-cyan-400/30 shadow-lg shadow-cyan-600/30'
-                  : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5'
-              }`}
-            >
-              {cat.label}
-            </button>
-          ))}
-        </div>
+        {/* Category Selector Tabs — hidden when coming from a direct event link */}
+        {!isSpecificEvent && (
+          <div className="flex items-center justify-center space-x-2 mb-8 overflow-x-auto pb-1">
+            {([
+              { id: 'cultural', label: '🎭 Cultural Events', icon: Sparkles },
+              { id: 'boysSports', label: '🔥 Boys Sports', icon: Trophy },
+              { id: 'girlsSports', label: '⚡ Girls Sports', icon: Trophy },
+            ] as const).map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryType(cat.id)}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap border ${
+                  categoryType === cat.id
+                    ? cat.id === 'cultural' ? 'bg-purple-600 text-white border-purple-400/30 shadow-lg shadow-purple-600/30'
+                    : cat.id === 'boysSports' ? 'bg-orange-600 text-white border-orange-400/30 shadow-lg shadow-orange-600/30'
+                    : 'bg-cyan-600 text-white border-cyan-400/30 shadow-lg shadow-cyan-600/30'
+                    : 'bg-white/5 text-slate-400 hover:text-white hover:bg-white/10 border-white/5'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Requirement 6: Prominent Registration Info Message */}
         <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs sm:text-sm flex items-start space-x-3 mb-6 shadow-lg shadow-amber-500/5">
@@ -560,8 +552,26 @@ const RegisterPage: React.FC = () => {
           <div className="space-y-4">
             <SectionHeader step={1} title="Choose Competition" color={categoryColor} />
 
-            {/* If sports, show clear selectable cards */}
-            {(categoryType === 'boysSports' || categoryType === 'girlsSports') ? (
+            {/* Specific-event lock: show locked badge instead of dropdown/cards */}
+            {isSpecificEvent ? (
+              <div className="rounded-2xl border border-purple-500/30 bg-purple-500/5 p-4 flex items-start space-x-3">
+                <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selected Event</p>
+                  <p className="text-base font-extrabold text-white">
+                    {(lockedEvent || activeEvent)?.name || 'Loading...'}
+                  </p>
+                  {(lockedEvent || activeEvent)?.category_name && (
+                    <span className="inline-block mt-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      {(lockedEvent || activeEvent)?.category_name}
+                    </span>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">This event was pre-selected. You cannot register for a different event from this page.</p>
+                </div>
+              </div>
+            ) : (
+              /* General registration: show cards for sports, dropdown for cultural */
+              (categoryType === 'boysSports' || categoryType === 'girlsSports') ? (
               <div>
                 <label className={labelClass}>
                   Select Game ({categoryType === 'boysSports' ? 'Boys Sports' : 'Girls Sports'}) *
@@ -628,7 +638,7 @@ const RegisterPage: React.FC = () => {
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-            )}
+            ))}
 
             {/* Active Event Card with Rules & Live Countdown */}
             {activeEvent && (
@@ -652,7 +662,7 @@ const RegisterPage: React.FC = () => {
                       isTeamEvent ? 'bg-white/10 text-slate-300' : 'bg-emerald-500/20 text-emerald-300'
                     }`}>
                       {isTeamEvent ? (
-                        <span><Users className="w-3 h-3 inline mr-1" />{activeEvent.team_size_label || `${minTeamSize} - ${maxTeamSize} Members`}</span>
+                        <span><Users className="w-3 h-3 inline mr-1" />{formatParticipantCount(activeEvent.team_size_label || minTeamSize, maxTeamSize)}</span>
                       ) : (
                         <span><User className="w-3 h-3 inline mr-1" />Solo / Individual</span>
                       )}

@@ -1,7 +1,18 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { SectionId } from '../../types';
 import { festivalConfig } from '../../data/festivalData';
-import { MapPin, Phone, Mail, Globe, ShieldCheck, Ticket, ArrowUp } from 'lucide-react';
+import { getSponsors } from '../../lib/api';
+import { MapPin, Phone, Mail, Globe, ShieldCheck, Ticket, ArrowUp, Sparkles } from 'lucide-react';
+
+interface FooterSponsor {
+  id: string;
+  name: string;
+  org_name?: string | null;
+  logo_url?: string | null;
+  website?: string | null;
+  category?: string | null;
+  display_order?: number;
+}
 
 interface FooterProps {
   onNavigate: (section: SectionId) => void;
@@ -9,6 +20,19 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenRegister }) => {
+  const [footerSponsors, setFooterSponsors] = useState<FooterSponsor[]>([]);
+
+  useEffect(() => {
+    getSponsors()
+      .then((res) => {
+        const raw: FooterSponsor[] = res.data?.sponsors ?? [];
+        // Keep all valid sponsors with a non-empty name
+        const real = raw.filter((s) => s && s.name && typeof s.name === 'string' && s.name.trim() !== '');
+        setFooterSponsors(real);
+      })
+      .catch(() => { /* silently ignore — footer still renders */ });
+  }, []);
+
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -20,6 +44,57 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate, onOpenRegister }) =>
       <div className="absolute top-0 right-1/4 -translate-y-1/2 w-96 h-96 bg-orange-900/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+        {/* ── Public Sponsors Highlight (Informational & Non-Clickable) ── */}
+        {footerSponsors.length > 0 && (
+          <div className="pb-12 mb-12 border-b border-white/10" id="public-sponsors-highlight">
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center space-x-2 px-3.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-[11px] font-bold uppercase tracking-widest text-amber-300 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Festival Allies</span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-wider font-['Outfit']">
+                SPONSORS
+              </h3>
+            </div>
+
+            <div className="flex flex-wrap items-start justify-center gap-6 sm:gap-8 max-w-5xl mx-auto px-4">
+              {footerSponsors.map((s) => {
+                const orgName = (
+                  s.org_name &&
+                  typeof s.org_name === 'string' &&
+                  s.org_name.trim() !== '' &&
+                  s.org_name.trim().toLowerCase() !== 'null' &&
+                  s.org_name.trim().toLowerCase() !== 'undefined'
+                ) ? s.org_name.trim() : null;
+
+                return (
+                  <div
+                    key={s.id}
+                    className="flex flex-col items-center select-none text-center"
+                  >
+                    {/* Highlighted sponsor element — looks like a prominent button/card, completely non-clickable */}
+                    <div
+                      className="px-6 py-3 rounded-2xl bg-gradient-to-r from-purple-900/50 via-purple-800/40 to-pink-900/50 border border-purple-500/40 shadow-[0_0_20px_rgba(168,85,247,0.2)] min-w-[180px] max-w-xs cursor-default pointer-events-none select-none"
+                      aria-readonly="true"
+                    >
+                      <span className="text-sm sm:text-base font-black text-white tracking-wide font-['Outfit'] block truncate">
+                        {s.name}
+                      </span>
+                    </div>
+
+                    {/* Organisation Name below sponsor name in a smaller/subtle style (if present) */}
+                    {orgName && (
+                      <p className="mt-2 text-xs text-slate-400 font-medium tracking-wide uppercase max-w-[200px] truncate">
+                        {orgName}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 pb-12 border-b border-white/10">
           {/* Column 1: Brand & College */}
           <div className="space-y-4">

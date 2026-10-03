@@ -141,3 +141,48 @@ export function calculateCountdown(targetTimestamp: number | null): CountdownRes
 
   return { days, hours, minutes, seconds, isStarted: false, isExpired: false };
 }
+
+/**
+ * Formats start and optional end date strings (e.g. YYYY-MM-DD) into a clean readable festival date range.
+ * Examples:
+ * '2026-05-25' -> '25 May 2026'
+ * '2026-05-25', '2026-06-01' -> '25 May – 1 June 2026'
+ * '2026-05-25', '2026-05-27' -> '25 – 27 May 2026'
+ */
+export function formatEventDateRange(startStr?: string, endStr?: string): string {
+  if (!startStr && !endStr) return '[OFFICIAL DATE TO BE UPDATED]';
+  if (!startStr && endStr) return formatEventDateRange(endStr);
+  const s = String(startStr).trim();
+  const e = endStr ? String(endStr).trim() : '';
+
+  if (s === '[OFFICIAL DATE TO BE UPDATED]' && !e) return s;
+
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  function parseYMD(str: string) {
+    const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return { year: parseInt(m[1], 10), month: parseInt(m[2], 10), day: parseInt(m[3], 10) };
+  }
+
+  const p1 = parseYMD(s);
+  const p2 = e ? parseYMD(e) : null;
+
+  if (p1 && !p2) {
+    return `${p1.day} ${MONTHS[p1.month - 1]} ${p1.year}`;
+  }
+  if (p1 && p2) {
+    if (p1.year === p2.year && p1.month === p2.month && p1.day === p2.day) {
+      return `${p1.day} ${MONTHS[p1.month - 1]} ${p1.year}`;
+    }
+    if (p1.year === p2.year && p1.month === p2.month) {
+      return `${p1.day} – ${p2.day} ${MONTHS[p1.month - 1]} ${p1.year}`;
+    }
+    if (p1.year === p2.year) {
+      return `${p1.day} ${MONTHS[p1.month - 1]} – ${p2.day} ${MONTHS[p2.month - 1]} ${p1.year}`;
+    }
+    return `${p1.day} ${MONTHS[p1.month - 1]} ${p1.year} – ${p2.day} ${MONTHS[p2.month - 1]} ${p2.year}`;
+  }
+
+  return s || e || '[OFFICIAL DATE TO BE UPDATED]';
+}

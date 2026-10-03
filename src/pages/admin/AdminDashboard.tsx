@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getAdminDashboard, updateRegistrationStatus } from '../../lib/api';
+import { getAdminDashboard, updateRegistrationStatus, getSiteConfig, updateSiteConfig } from '../../lib/api';
 import {
   Users, Ticket, Trophy, Calendar, Megaphone,
   CheckCircle, ArrowUpRight,
-  Download, ShieldCheck
+  Download, ShieldCheck, Save
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -44,6 +44,9 @@ const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
   const [recentRegs, setRecentRegs] = useState<RecentReg[]>([]);
   const [, setLoading] = useState<boolean>(true);
+  const [festivalDates, setFestivalDates] = useState<string>('');
+  const [dateInput, setDateInput] = useState<string>('');
+  const [savingDate, setSavingDate] = useState<boolean>(false);
 
   const fetchDashboardData = () => {
     getAdminDashboard()
@@ -78,7 +81,38 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    // Load current festival dates from site_config
+    getSiteConfig()
+      .then((res) => {
+        const d = res.data?.festival_dates;
+        if (d && d !== '[OFFICIAL DATE TO BE UPDATED]') {
+          setFestivalDates(d);
+          setDateInput(d);
+        } else {
+          setFestivalDates('');
+          setDateInput('');
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleSaveDate = async () => {
+    const val = dateInput.trim();
+    if (!val) {
+      toast.error('Please enter a date before saving.');
+      return;
+    }
+    setSavingDate(true);
+    try {
+      await updateSiteConfig('festival_dates', val);
+      setFestivalDates(val);
+      toast.success('Festival date updated! It will now appear on the public home page.');
+    } catch {
+      toast.error('Failed to save festival date.');
+    } finally {
+      setSavingDate(false);
+    }
+  };
 
   const handleStatusChange = async (id: string, newStatus: string) => {
     try {
@@ -193,6 +227,46 @@ const AdminDashboard: React.FC = () => {
           </div>
           <p className="text-3xl font-black text-emerald-400 font-['Outfit']">{stats.confirmedCount}</p>
           <p className="text-[10px] text-amber-400 mt-1">{stats.pendingCount} pending verification</p>
+        </div>
+      </div>
+
+      {/* ── Festival Event Date ────────────────────────────────────── */}
+      <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-950/30 via-[#0d0b15] to-pink-950/30 p-6 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="flex items-center space-x-2 mb-1">
+              <Calendar className="w-4 h-4 text-purple-400" />
+              <span className="text-[11px] font-black uppercase tracking-wider text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-md border border-purple-500/20">
+                Festival Event Date
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Sets the date displayed on the public home page.{' '}
+              {festivalDates ? (
+                <span className="text-emerald-400 font-semibold">Currently: {festivalDates}</span>
+              ) : (
+                <span className="text-amber-400 font-semibold">No date set — showing fallback text.</span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <input
+              id="festival-date-input"
+              type="text"
+              value={dateInput}
+              onChange={(e) => setDateInput(e.target.value)}
+              placeholder="e.g. 25 May – 1 June 2026"
+              className="flex-1 sm:w-72 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-medium placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/40 transition-all"
+            />
+            <button
+              onClick={handleSaveDate}
+              disabled={savingDate}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs transition-all shadow-md shadow-purple-600/20 whitespace-nowrap"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>{savingDate ? 'Saving…' : 'Save Date'}</span>
+            </button>
+          </div>
         </div>
       </div>
 

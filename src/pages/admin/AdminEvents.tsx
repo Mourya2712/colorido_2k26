@@ -247,7 +247,9 @@ const AdminEvents: React.FC = () => {
         min_team_size: Number(editingEvent.min_team_size),
         max_team_size: Number(editingEvent.max_team_size),
         team_size_label: editingEvent.registration_type === 'team'
-          ? `${editingEvent.min_team_size} - ${editingEvent.max_team_size} Members`
+          ? (Number(editingEvent.min_team_size) === Number(editingEvent.max_team_size)
+              ? `${editingEvent.min_team_size} ${Number(editingEvent.min_team_size) === 1 ? 'Member' : 'Members'}`
+              : `${editingEvent.min_team_size}–${editingEvent.max_team_size} Members`)
           : 'Individual Solo',
         is_registration_open: editingEvent.is_registration_open ? 1 : 0,
         registration_deadline: editingEvent.registration_deadline,
@@ -315,7 +317,11 @@ const AdminEvents: React.FC = () => {
         registration_type: newEvent.registration_type,
         min_team_size: minSize,
         max_team_size: maxSize,
-        team_size_label: isTeam ? `${minSize} - ${maxSize} Members` : 'Individual Solo',
+        team_size_label: isTeam
+          ? (minSize === maxSize
+              ? `${minSize} ${minSize === 1 ? 'Member' : 'Members'}`
+              : `${minSize}–${maxSize} Members`)
+          : 'Individual Solo',
         gender: eventGender,
         is_registration_open: newEvent.is_registration_open ? 1 : 0,
         registration_deadline: newEvent.registration_deadline || '2026-10-15T23:59:59.000Z',
@@ -465,7 +471,9 @@ const AdminEvents: React.FC = () => {
                       <span className="text-slate-400">Team Size:</span>
                       <strong className="text-slate-200">
                         {item.registration_type === 'team'
-                          ? `${item.min_team_size} - ${item.max_team_size} Members`
+                          ? (Number(item.min_team_size) === Number(item.max_team_size)
+                              ? `${item.min_team_size} ${Number(item.min_team_size) === 1 ? 'Member' : 'Members'}`
+                              : `${item.min_team_size}–${item.max_team_size} Members`)
                           : 'Solo Entry'}
                       </strong>
                     </div>
